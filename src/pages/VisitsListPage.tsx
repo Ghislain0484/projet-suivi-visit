@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase, Visit, Service, VisitorType } from '../lib/supabase';
+import { supabase, Visit, Service } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -16,10 +16,9 @@ import {
   Building2,
   CheckCircle,
   XCircle,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
-  FileText,
+  Sparkles,
 } from 'lucide-react';
 
 export default function VisitsListPage() {
@@ -119,19 +118,16 @@ export default function VisitsListPage() {
 
   const getStatusBadge = (status: string) => {
     const config = {
-      in_progress: { label: 'En cours', class: 'badge-info', icon: Clock },
-      completed: { label: 'Termine', class: 'badge-success', icon: CheckCircle },
-      cancelled: { label: 'Annule', class: 'badge-danger', icon: XCircle },
+      in_progress: { label: 'En cours', class: 'badge-info', dot: 'dot-pulse-primary' },
+      completed: { label: 'Terminé', class: 'badge-success', dot: 'dot-pulse-success' },
+      cancelled: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
     };
-    const { label, class: cls, icon: Icon } = config[status as keyof typeof config] || {
-      label: status,
-      class: 'badge-gray',
-      icon: Clock,
-    };
+    const current = config[status as keyof typeof config] || { label: status, class: 'badge-gray', dot: 'bg-slate-400' };
+    
     return (
-      <span className={`${cls} flex items-center gap-1`}>
-        <Icon className="w-3 h-3" />
-        {label}
+      <span className={`${current.class} flex items-center gap-1.5`}>
+        <span className={current.dot} />
+        {current.label}
       </span>
     );
   };
@@ -151,47 +147,61 @@ export default function VisitsListPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gestion des Visites</h1>
-          <p className="text-gray-500">Liste et suivi de toutes les visites</p>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400 font-semibold text-xs uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" /> Registre de suivi
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Gestion des Visites</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Liste complète et historique des visites enregistrées</p>
         </div>
-        <Link to="/visits/new" className="btn-primary">
-          <Plus className="w-5 h-5 mr-2" />
-          Nouvelle visite
-        </Link>
+        
+        {/* New Visit Button */}
+        {profile && ['admin', 'reception', 'director'].includes(profile.role) && (
+          <Link 
+            to="/visits/new" 
+            className="btn-primary shrink-0 self-start sm:self-auto"
+          >
+            <Plus className="w-4.5 h-4.5 mr-2" />
+            Nouvelle visite
+          </Link>
+        )}
       </div>
 
-      {/* Search and Filters */}
+      {/* Search and Filters Section */}
       <div className="card">
-        <div className="p-4 space-y-4">
+        <div className="p-5 space-y-4">
           <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
-                placeholder="Rechercher par code, motif, visiteur..."
+                placeholder="Rechercher par code, motif de visite, nom de visiteur..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input pl-10"
+                className="input pl-11"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`btn-secondary ${showFilters ? 'bg-primary-50 border-primary-300' : ''}`}
-            >
-              <Filter className="w-5 h-5 mr-2" />
-              Filtres
-            </button>
-            <button type="submit" className="btn-primary">
-              Rechercher
-            </button>
+            
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFilters(!showFilters)}
+                className={`btn-secondary ${showFilters ? 'bg-primary-50 dark:bg-primary-950/20 border-primary-500/30 text-primary-600 dark:text-primary-400' : ''}`}
+              >
+                <Filter className="w-4.5 h-4.5 mr-2" />
+                Filtres
+              </button>
+              <button type="submit" className="btn-primary px-6">
+                Rechercher
+              </button>
+            </div>
           </form>
 
+          {/* Collapsible filter pane */}
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-5 bg-slate-50/70 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/80 animate-in fade-in slide-in-from-top-3 duration-200">
               <div>
                 <label className="label">Statut</label>
                 <select
@@ -201,12 +211,13 @@ export default function VisitsListPage() {
                 >
                   <option value="">Tous</option>
                   <option value="in_progress">En cours</option>
-                  <option value="completed">Termine</option>
-                  <option value="cancelled">Annule</option>
+                  <option value="completed">Terminé</option>
+                  <option value="cancelled">Annulé</option>
                 </select>
               </div>
+              
               <div>
-                <label className="label">Service</label>
+                <label className="label">Service ciblé</label>
                 <select
                   value={filters.service}
                   onChange={(e) => handleFilterChange('service', e.target.value)}
@@ -220,8 +231,9 @@ export default function VisitsListPage() {
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="label">Type visiteur</label>
+                <label className="label">Type de visiteur</label>
                 <select
                   value={filters.visitorType}
                   onChange={(e) => handleFilterChange('visitorType', e.target.value)}
@@ -235,6 +247,7 @@ export default function VisitsListPage() {
                   <option value="other">Autre</option>
                 </select>
               </div>
+
               <div>
                 <label className="label">Rendez-vous</label>
                 <select
@@ -247,8 +260,9 @@ export default function VisitsListPage() {
                   <option value="no">Sans RDV</option>
                 </select>
               </div>
+
               <div>
-                <label className="label">Du</label>
+                <label className="label">Date de début</label>
                 <input
                   type="date"
                   value={filters.dateFrom}
@@ -256,8 +270,9 @@ export default function VisitsListPage() {
                   className="input"
                 />
               </div>
+
               <div>
-                <label className="label">Au</label>
+                <label className="label">Date de fin</label>
                 <input
                   type="date"
                   value={filters.dateTo}
@@ -265,9 +280,10 @@ export default function VisitsListPage() {
                   className="input"
                 />
               </div>
-              <div className="sm:col-span-2 flex justify-end">
-                <button type="button" onClick={clearFilters} className="btn-secondary">
-                  Reinitialiser
+
+              <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 flex justify-end gap-2 pt-3 border-t border-slate-200/40 dark:border-slate-800/40">
+                <button type="button" onClick={clearFilters} className="btn-secondary px-5 text-xs py-2">
+                  Réinitialiser
                 </button>
               </div>
             </div>
@@ -275,37 +291,37 @@ export default function VisitsListPage() {
         </div>
       </div>
 
-      {/* Results Count */}
+      {/* Actions & Count Info */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
-          {pagination.total} visite(s) trouvee(s)
+        <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+          {pagination.total} {pagination.total > 1 ? 'visites trouvées' : 'visite trouvée'}
         </p>
-        <div className="flex gap-2">
-          <button className="btn-secondary text-sm">
-            <Download className="w-4 h-4 mr-2" />
-            Exporter
-          </button>
-        </div>
+        <button className="btn-secondary text-xs px-4 py-2 border border-slate-200 dark:border-slate-800">
+          <Download className="w-4 h-4 mr-1.5" />
+          Exporter CSV
+        </button>
       </div>
 
-      {/* Visits Table */}
+      {/* Table Section */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600"></div>
+          <div className="loading-spinner h-8 w-8"></div>
         </div>
       ) : visits.length === 0 ? (
-        <div className="card p-12 text-center">
-          <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune visite trouvee</h3>
-          <p className="text-gray-500 mb-4">Commencez par enregistrer une nouvelle visite</p>
-          <Link to="/visits/new" className="btn-primary">
-            <Plus className="w-5 h-5 mr-2" />
-            Nouvelle visite
-          </Link>
+        <div className="card p-16 text-center">
+          <Calendar className="w-16 h-16 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">Aucune visite trouvée</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Commencez par enregistrer le premier visiteur dans le registre.</p>
+          {profile && ['admin', 'reception', 'director'].includes(profile.role) && (
+            <Link to="/visits/new" className="btn-primary">
+              <Plus className="w-4.5 h-4.5 mr-2" />
+              Nouvelle visite
+            </Link>
+          )}
         </div>
       ) : (
         <div className="card overflow-hidden">
-          <div className="table-container border-0">
+          <div className="table-container border-0 rounded-b-none">
             <table className="table">
               <thead>
                 <tr>
@@ -313,30 +329,34 @@ export default function VisitsListPage() {
                   <th>Visiteur</th>
                   <th>Type</th>
                   <th>Motif</th>
-                  <th>Service</th>
-                  <th>Arrivee</th>
-                  <th>Depart</th>
+                  <th>Service ciblé</th>
+                  <th>Arrivée</th>
+                  <th>Départ</th>
                   <th>Statut</th>
-                  <th>Actions</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {visits.map((visit) => (
-                  <tr key={visit.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/visits/${visit.id}`)}>
-                    <td className="font-mono text-sm font-medium text-primary-700">
+                  <tr 
+                    key={visit.id} 
+                    className="cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-900/30" 
+                    onClick={() => navigate(`/visits/${visit.id}`)}
+                  >
+                    <td className="font-mono text-xs font-bold text-primary-600 dark:text-primary-400">
                       {visit.visit_code}
                     </td>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-primary-700" />
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-primary-50 to-primary-100 dark:from-primary-950 dark:to-primary-900 flex items-center justify-center flex-shrink-0 border border-primary-100/10">
+                          <User className="w-4 h-4 text-primary-700 dark:text-primary-400" />
                         </div>
                         <div>
-                          <p className="font-medium">
+                          <p className="font-semibold text-slate-800 dark:text-white">
                             {visit.visitor?.first_name} {visit.visitor?.last_name}
                           </p>
                           {visit.visitor?.company && (
-                            <p className="text-xs text-gray-500">{visit.visitor.company}</p>
+                            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">{visit.visitor.company}</p>
                           )}
                         </div>
                       </div>
@@ -344,38 +364,44 @@ export default function VisitsListPage() {
                     <td>
                       <span className="badge-gray">{getVisitorTypeLabel(visit.visitor?.visitor_type || 'other')}</span>
                     </td>
-                    <td className="max-w-xs truncate">{visit.purpose}</td>
+                    <td className="max-w-[200px] truncate font-medium">{visit.purpose}</td>
                     <td>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{visit.service?.name || '-'}</span>
+                      <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                        <Building2 className="w-4 h-4 text-slate-400" />
+                        <span className="font-medium">{visit.service?.name || '-'}</span>
                       </div>
                     </td>
-                    <td className="text-sm">
-                      <p>{format(new Date(visit.arrival_time), 'dd/MM/yyyy')}</p>
-                      <p className="text-gray-500">{format(new Date(visit.arrival_time), 'HH:mm')}</p>
+                    <td>
+                      <div className="text-xs">
+                        <p className="font-semibold text-slate-800 dark:text-white">
+                          {format(new Date(visit.arrival_time), 'dd/MM/yyyy')}
+                        </p>
+                        <p className="text-slate-400 dark:text-slate-500 font-medium mt-0.5">{format(new Date(visit.arrival_time), 'HH:mm')}</p>
+                      </div>
                     </td>
-                    <td className="text-sm">
+                    <td>
                       {visit.departure_time ? (
-                        <>
-                          <p>{format(new Date(visit.departure_time), 'dd/MM/yyyy')}</p>
-                          <p className="text-gray-500">{format(new Date(visit.departure_time), 'HH:mm')}</p>
-                        </>
+                        <div className="text-xs">
+                          <p className="font-semibold text-slate-800 dark:text-white">
+                            {format(new Date(visit.departure_time), 'dd/MM/yyyy')}
+                          </p>
+                          <p className="text-slate-400 dark:text-slate-500 font-medium mt-0.5">{format(new Date(visit.departure_time), 'HH:mm')}</p>
+                        </div>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-slate-400 dark:text-slate-600 italic font-medium">En cours</span>
                       )}
                     </td>
                     <td>{getStatusBadge(visit.status)}</td>
                     <td>
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                         <Link
                           to={`/visits/${visit.id}`}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Voir details"
+                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                          title="Voir détails"
                         >
-                          <Eye className="w-4 h-4 text-gray-600" />
+                          <Eye className="w-4.5 h-4.5" />
                         </Link>
-                        {visit.status === 'in_progress' && (
+                        {visit.status === 'in_progress' && profile && ['admin', 'reception', 'director'].includes(profile.role) && (
                           <button
                             onClick={async () => {
                               await supabase
@@ -384,10 +410,10 @@ export default function VisitsListPage() {
                                 .eq('id', visit.id);
                               fetchVisits();
                             }}
-                            className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
-                            title="Marquer le depart"
+                            className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                            title="Enregistrer le départ"
                           >
-                            <CheckCircle className="w-4 h-4 text-emerald-600" />
+                            <CheckCircle className="w-4.5 h-4.5" />
                           </button>
                         )}
                       </div>
@@ -398,25 +424,25 @@ export default function VisitsListPage() {
             </table>
           </div>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
-            <p className="text-sm text-gray-500">
+          {/* Pagination Footer */}
+          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/30 dark:bg-slate-900/10">
+            <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
               Page {pagination.page} sur {totalPages || 1}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))}
                 disabled={pagination.page === 1}
-                className="btn-secondary"
+                className="btn-secondary p-2.5 rounded-xl border border-slate-200 dark:border-slate-800"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-4.5 h-4.5" />
               </button>
               <button
                 onClick={() => setPagination((p) => ({ ...p, page: Math.min(totalPages, p.page + 1) }))}
                 disabled={pagination.page >= totalPages}
-                className="btn-secondary"
+                className="btn-secondary p-2.5 rounded-xl border border-slate-200 dark:border-slate-800"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-4.5 h-4.5" />
               </button>
             </div>
           </div>

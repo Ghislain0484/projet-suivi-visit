@@ -13,6 +13,8 @@ import {
   Cell,
   LineChart,
   Line,
+  AreaChart,
+  Area,
 } from 'recharts';
 import {
   Users,
@@ -24,8 +26,8 @@ import {
   Building2,
   CheckCircle,
   XCircle,
-  ArrowUp,
-  ArrowDown,
+  ArrowUpRight,
+  Sparkles,
 } from 'lucide-react';
 import { supabase, Visit, Service } from '../lib/supabase';
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
@@ -216,11 +218,11 @@ export default function DashboardPage() {
     };
 
     const typeColors: Record<string, string> = {
-      client: '#1e40af',
-      prospect: '#059669',
-      supplier: '#d97706',
-      partner: '#7c3aed',
-      other: '#6b7280',
+      client: '#3b82f6',     // Modern primary blue
+      prospect: '#10b981',   // Emerald
+      supplier: '#f59e0b',   // Amber
+      partner: '#8b5cf6',    // Violet
+      other: '#64748b',      // Slate
     };
 
     setVisitsByType(
@@ -241,7 +243,7 @@ export default function DashboardPage() {
 
     const serviceCounts: Record<string, number> = {};
     serviceVisits?.forEach((v: any) => {
-      const name = v.services?.name || 'Non assigne';
+      const name = v.services?.name || 'Non assigné';
       serviceCounts[name] = (serviceCounts[name] || 0) + 1;
     });
 
@@ -299,204 +301,279 @@ export default function DashboardPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      in_progress: 'badge-info',
-      completed: 'badge-success',
-      cancelled: 'badge-danger',
+    const config = {
+      in_progress: { label: 'En cours', class: 'badge-info', dot: 'dot-pulse-primary' },
+      completed: { label: 'Terminé', class: 'badge-success', dot: 'dot-pulse-success' },
+      cancelled: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
     };
-    const labels: Record<string, string> = {
-      in_progress: 'En cours',
-      completed: 'Termine',
-      cancelled: 'Annule',
-    };
-    return <span className={styles[status] || 'badge-gray'}>{labels[status] || status}</span>;
+    const current = config[status as keyof typeof config] || { label: status, class: 'badge-gray', dot: 'bg-slate-400' };
+    
+    return (
+      <span className={`${current.class} flex items-center gap-1.5`}>
+        <span className={current.dot} />
+        {current.label}
+      </span>
+    );
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(amount);
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600"></div>
+      <div className="flex items-center justify-center h-96">
+        <div className="loading-spinner h-10 w-10"></div>
       </div>
     );
   }
 
+  // Custom tooltips for graphs
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xl">
+          <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{label}</p>
+          <p className="text-sm font-extrabold text-slate-800 dark:text-white mt-1">
+            {payload[0].value} {payload[0].value > 1 ? 'visites' : 'visite'}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tableau de Bord</h1>
-          <p className="text-gray-500">Vue d'ensemble de l'activite - {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}</p>
+    <div className="space-y-8">
+      {/* Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-6 bg-gradient-to-br from-primary-900/10 via-indigo-900/5 to-transparent dark:from-primary-950/20 dark:via-[#0F1422] rounded-3xl border border-primary-500/10 dark:border-primary-500/5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-primary-700 dark:text-primary-400 font-semibold text-xs uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" /> Vue d'ensemble de l'activité
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Tableau de Bord</h1>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
+            Statistiques globales compilées le {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
+          </p>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* KPI 1: Today Visits */}
         <div className="stat-card">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Visites du jour</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{stats.todayVisits}</p>
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Visites du jour</p>
+              <p className="text-3xl font-extrabold text-slate-900 dark:text-white">{stats.todayVisits}</p>
             </div>
-            <div className="p-3 bg-primary-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-primary-700" />
+            <div className="p-3 bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 rounded-2xl shadow-inner border border-primary-100/10">
+              <Calendar className="w-5 h-5 animate-pulse-slow" />
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 text-sm">
-            <span className="text-gray-500">Cette semaine:</span>
-            <span className="font-semibold text-gray-900">{stats.weekVisits}</span>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
+            <span>Cette semaine</span>
+            <span className="font-bold text-slate-800 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">{stats.weekVisits}</span>
           </div>
         </div>
 
+        {/* KPI 2: Month Visits */}
         <div className="stat-card">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Visites du mois</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{stats.monthVisits}</p>
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Visites du mois</p>
+              <p className="text-3xl font-extrabold text-slate-900 dark:text-white">{stats.monthVisits}</p>
             </div>
-            <div className="p-3 bg-emerald-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-emerald-700" />
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-2xl shadow-inner border border-emerald-100/10">
+              <TrendingUp className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 text-sm">
-            <span className="text-gray-500">Avec RDV:</span>
-            <span className="font-semibold text-emerald-600">{stats.withAppointment}</span>
-            <span className="text-gray-400">|</span>
-            <span className="text-gray-500">Sans RDV:</span>
-            <span className="font-semibold text-amber-600">{stats.withoutAppointment}</span>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1.5 text-[11px] text-slate-500">
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-md">RDV: {stats.withAppointment}</span>
+            <span>/</span>
+            <span className="font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded-md">Sans RDV: {stats.withoutAppointment}</span>
           </div>
         </div>
 
+        {/* KPI 3: Invoiced amount */}
         <div className="stat-card">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Total Facture</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(stats.totalInvoiced)}
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Facturation</p>
+              <p className="text-2xl font-extrabold text-slate-900 dark:text-white truncate max-w-[180px]">
+                {formatCurrency(stats.totalInvoiced)}
               </p>
             </div>
-            <div className="p-3 bg-gold-100 rounded-lg">
-              <CreditCard className="w-6 h-6 text-gold-700" />
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl shadow-inner border border-amber-100/10">
+              <CreditCard className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 text-sm">
-            <span className="text-gray-500">Encaisse:</span>
-            <span className="font-semibold text-emerald-600">
-              {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(stats.totalPaid)}
-            </span>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
+            <span>Encaissé</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(stats.totalPaid)}</span>
           </div>
         </div>
 
-        <div className="stat-card bg-red-50 border-red-200">
+        {/* KPI 4: Urgent dossiers */}
+        <div className={`stat-card border-rose-500/20 dark:border-rose-500/10 ${stats.urgentCases + stats.blockedCases + stats.lateCases > 0 ? 'bg-rose-50/10 dark:bg-rose-950/5' : ''}`}>
           <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-red-600">Cas Urgents</p>
-              <p className="text-3xl font-bold text-red-700 mt-1">{stats.urgentCases + stats.blockedCases + stats.lateCases}</p>
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider">Cas Urgents</p>
+              <p className="text-3xl font-extrabold text-rose-600 dark:text-rose-400">
+                {stats.urgentCases + stats.blockedCases + stats.lateCases}
+              </p>
             </div>
-            <div className="p-3 bg-red-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-2xl shadow-inner border border-rose-100/10">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 text-sm text-red-600">
-            <span>Bloques: {stats.blockedCases}</span>
-            <span className="text-red-400">|</span>
-            <span>En retard: {stats.lateCases}</span>
+          <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-semibold">
+            <span className="bg-rose-50 dark:bg-rose-950/30 px-1.5 py-0.5 rounded-md">Bloqués: {stats.blockedCases}</span>
+            <span>/</span>
+            <span className="bg-rose-50 dark:bg-rose-950/30 px-1.5 py-0.5 rounded-md">En retard: {stats.lateCases}</span>
           </div>
         </div>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Visit Trend */}
+      {/* Graphs Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* Visit Evolution Trend Area Graph */}
         <div className="card">
           <div className="card-header">
-            <h3 className="font-semibold text-gray-900">Evolution des visites (7 jours)</h3>
+            <h3 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Évolution des visites (7 jours)</h3>
           </div>
           <div className="card-body">
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={visitTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                  }}
-                />
-                <Line
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={visitTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorVisits" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.01}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" className="dark:stroke-slate-800/40" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
                   type="monotone"
                   dataKey="visits"
-                  stroke="#1e40af"
-                  strokeWidth={2}
-                  dot={{ fill: '#1e40af', strokeWidth: 2 }}
+                  stroke="#3b82f6"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#colorVisits)"
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Visits by Type */}
+        {/* Visitor Type Pie Chart */}
         <div className="card">
           <div className="card-header">
-            <h3 className="font-semibold text-gray-900">Repartition par type de visiteur</h3>
+            <h3 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Répartition des Visiteurs</h3>
           </div>
-          <div className="card-body">
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={visitsByType}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {visitsByType.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="card-body flex flex-col sm:flex-row items-center justify-around gap-6">
+            <div className="relative w-48 h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={visitsByType}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {visitsByType.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} className="outline-none focus:outline-none" />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                      border: 'none',
+                      borderRadius: '16px',
+                      color: '#fff',
+                      fontSize: '11px',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl font-black text-slate-800 dark:text-white">{stats.monthVisits}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Ce mois</span>
+              </div>
+            </div>
+            
+            {/* Legend list */}
+            <div className="space-y-2.5 max-w-[200px] w-full">
+              {visitsByType.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <span className="w-2.5 h-2.5 rounded-md" style={{ backgroundColor: item.color }} />
+                    <span className="font-medium truncate">{item.name}</span>
+                  </div>
+                  <span className="font-bold text-slate-800 dark:text-white">{item.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Visits by Service */}
+      {/* Visits by Service rounded bar charts */}
       <div className="card">
         <div className="card-header">
-          <h3 className="font-semibold text-gray-900">Visites par service (ce mois)</h3>
+          <h3 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Visites par Service (Ce mois)</h3>
         </div>
         <div className="card-body">
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={visitsByService} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis type="number" tick={{ fontSize: 12 }} stroke="#6b7280" />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} stroke="#6b7280" width={150} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                }}
-              />
-              <Bar dataKey="visits" fill="#1e40af" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {visitsByService.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={visitsByService} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" className="dark:stroke-slate-800/40" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={130} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    border: 'none',
+                    borderRadius: '16px',
+                    color: '#fff',
+                    fontSize: '11px',
+                  }}
+                />
+                <Bar dataKey="visits" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={16}>
+                  {visitsByService.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={`url(#barGradient-${index % 2})`} />
+                  ))}
+                </Bar>
+                <defs>
+                  <linearGradient id="barGradient-0" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#60a5fa" />
+                  </linearGradient>
+                  <linearGradient id="barGradient-1" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#8b5cf6" />
+                    <stop offset="100%" stopColor="#a78bfa" />
+                  </linearGradient>
+                </defs>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center py-12 text-slate-400">Aucune visite enregistrée ce mois-ci.</div>
+          )}
         </div>
       </div>
 
-      {/* Recent Visits */}
+      {/* Recent Visits Table */}
       <div className="card">
         <div className="card-header flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">Visites recentes</h3>
-          <a href="/visits" className="text-sm text-primary-700 hover:text-primary-800 font-medium">
-            Voir tout
+          <h3 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Visites Récentes</h3>
+          <a href="/visits" className="text-xs font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 flex items-center gap-1 hover:underline">
+            Voir tout <ArrowUpRight className="w-3.5 h-3.5" />
           </a>
         </div>
         <div className="table-container border-0 rounded-t-none">
@@ -507,32 +584,39 @@ export default function DashboardPage() {
                 <th>Visiteur</th>
                 <th>Type</th>
                 <th>Service</th>
-                <th>Arrivee</th>
+                <th>Arrivée</th>
                 <th>Statut</th>
               </tr>
             </thead>
             <tbody>
               {recentVisits.map((visit) => (
                 <tr key={visit.id}>
-                  <td className="font-mono text-sm">{visit.visit_code}</td>
+                  <td className="font-mono text-xs font-bold text-primary-600 dark:text-primary-400">{visit.visit_code}</td>
                   <td>
                     <div>
-                      <p className="font-medium">
+                      <p className="font-semibold text-slate-800 dark:text-white">
                         {visit.visitor?.first_name} {visit.visitor?.last_name}
                       </p>
                       {visit.visitor?.company && (
-                        <p className="text-xs text-gray-500">{visit.visitor.company}</p>
+                        <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">{visit.visitor.company}</p>
                       )}
                     </div>
                   </td>
                   <td>
                     <span className="badge-gray">{getVisitorTypeLabel(visit.visitor?.visitor_type || 'other')}</span>
                   </td>
-                  <td>{visit.service?.name || '-'}</td>
-                  <td className="text-sm">
-                    <div>
-                      <p>{format(new Date(visit.arrival_time), 'dd/MM/yyyy')}</p>
-                      <p className="text-gray-500">{format(new Date(visit.arrival_time), 'HH:mm')}</p>
+                  <td>
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                      <Building2 className="w-4 h-4 text-slate-400" />
+                      <span className="font-medium">{visit.service?.name || '-'}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="text-xs">
+                      <p className="font-semibold text-slate-800 dark:text-white">
+                        {format(new Date(visit.arrival_time), 'dd/MM/yyyy')}
+                      </p>
+                      <p className="text-slate-400 dark:text-slate-500 font-medium mt-0.5">{format(new Date(visit.arrival_time), 'HH:mm')}</p>
                     </div>
                   </td>
                   <td>{getStatusBadge(visit.status)}</td>
@@ -543,17 +627,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Services Quick View */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Services Grid Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {services.slice(0, 4).map((service) => (
-          <div key={service.id} className="card p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-primary-100 rounded-lg">
-                <Building2 className="w-5 h-5 text-primary-700" />
+          <div key={service.id} className="card p-5 hover:border-primary-500/20 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-3.5 mb-3.5">
+              <div className="p-2.5 bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 rounded-xl">
+                <Building2 className="w-5 h-5" />
               </div>
-              <h4 className="font-semibold text-gray-900 text-sm line-clamp-1">{service.name}</h4>
+              <h4 className="font-bold text-slate-800 dark:text-white text-sm truncate">{service.name}</h4>
             </div>
-            <p className="text-xs text-gray-500 line-clamp-2">{service.description}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed line-clamp-2">{service.description || 'Aucune description fournie.'}</p>
           </div>
         ))}
       </div>

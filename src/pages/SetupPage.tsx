@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Eye, EyeOff, Lock, Mail, User, Phone, CheckCircle, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, Phone, CheckCircle, AlertCircle, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function SetupPage() {
   const navigate = useNavigate();
@@ -46,7 +46,7 @@ export default function SetupPage() {
     }
 
     if (form.password.length < 8) {
-      setError('Le mot de passe doit contenir au moins 8 caracteres');
+      setError('Le mot de passe doit contenir au moins 8 caractères');
       return;
     }
 
@@ -62,7 +62,7 @@ export default function SetupPage() {
       });
 
       if (signUpError) throw signUpError;
-      if (!data.user) throw new Error('Echec de la creation du compte');
+      if (!data.user) throw new Error('Échec de la création du compte');
 
       const { error: profileError } = await supabase.from('profiles').insert({
         id: data.user.id,
@@ -89,87 +89,100 @@ export default function SetupPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1565a8]" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600 dark:text-primary-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1565a8] via-[#1a75bf] to-[#2196d3] flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/5 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-white/5 rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col lg:flex-row transition-colors duration-300 overflow-hidden">
+      
+      {/* Left Panel - Branding (Visible on Desktop) */}
+      <div className="hidden lg:flex lg:w-[45%] xl:w-[50%] bg-gradient-to-br from-[#0B0F19] via-[#0F172A] to-[#1E293B] relative items-center justify-center p-12 overflow-hidden border-r border-slate-800/60">
+        <div className="absolute top-1/4 left-1/4 w-[350px] h-[350px] bg-primary-600/10 rounded-full blur-[100px] animate-pulse-slow"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-indigo-600/10 rounded-full blur-[120px] animate-pulse-slow"></div>
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-25"></div>
+
+        <div className="relative max-w-md space-y-6">
+          <div className="inline-flex p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
+            <img
+              src="/logo-gico.png"
+              alt="GICO SARL"
+              className="h-12 w-12 object-contain rounded-xl bg-white p-1"
+            />
+          </div>
+          <h2 className="text-3xl font-extrabold text-white tracking-tight">Configuration Initiale</h2>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Créez le compte administrateur racine de votre système de gestion de visites. Ce compte aura tous les privilèges d'administration système, de création des services et d'attribution des rôles de facturation.
+          </p>
+          <div className="p-4 rounded-2xl bg-blue-950/20 border border-blue-900/30 backdrop-blur-md">
+            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Note de sécurité</p>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              Assurez-vous d'utiliser une adresse email professionnelle et un mot de passe hautement sécurisé pour ce compte.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="w-full max-w-lg relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#1565a8] to-[#1a75bf] px-8 py-6 text-center">
-            <div className="flex items-center justify-center mb-3">
-              <img
-                src="/logo-gico.png"
-                alt="GICO SARL"
-                className="h-16 w-16 object-contain rounded-xl bg-white p-1 shadow-lg"
-              />
-            </div>
-            <h1 className="text-xl font-bold text-white">GICO VISIT TRACKER</h1>
-            <p className="text-blue-100 text-sm mt-1">Configuration initiale</p>
+      {/* Right Panel - Setup Forms */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative z-10 overflow-y-auto">
+        <div className="w-full max-w-md space-y-6">
+          
+          {/* Logo on mobile only */}
+          <div className="lg:hidden text-center space-y-3">
+            <img
+              src="/logo-gico.png"
+              alt="GICO SARL"
+              className="h-14 w-14 object-contain rounded-xl bg-white p-1 shadow-md mx-auto"
+            />
+            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">GICO VISIT TRACKER</h1>
           </div>
 
-          <div className="px-8 py-8">
+          <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-lg rounded-3xl border border-slate-100 dark:border-slate-800/80 p-8 shadow-2xl">
             {alreadySetup ? (
-              /* Already configured */
-              <div className="text-center py-4">
-                <ShieldCheck className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Application deja configuree</h2>
-                <p className="text-gray-500 mb-6">
-                  Un compte administrateur existe deja. Veuillez vous connecter normalement.
-                </p>
+              <div className="text-center py-6 space-y-6">
+                <ShieldCheck className="w-16 h-16 text-emerald-500 mx-auto animate-bounce" />
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Système déjà configuré</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    Un compte administrateur racine existe déjà pour cette base de données.
+                  </p>
+                </div>
                 <button
                   onClick={() => navigate('/login')}
-                  className="w-full py-3 px-4 bg-[#1565a8] hover:bg-[#1253a0] text-white font-semibold rounded-lg transition-colors"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-semibold rounded-xl transition-all duration-300 shadow-md"
                 >
-                  Aller a la connexion
+                  Aller à la page de connexion
                 </button>
               </div>
             ) : done ? (
-              /* Success */
-              <div className="text-center py-4">
-                <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Compte cree avec succes !</h2>
-                <p className="text-gray-600 mb-2">
-                  Votre compte administrateur a ete cree pour <strong>{form.email}</strong>.
-                </p>
-                <p className="text-sm text-gray-500 mb-6">
-                  Vous pouvez maintenant vous connecter et piloter toute l'application.
-                </p>
+              <div className="text-center py-6 space-y-6">
+                <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto" />
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white font-extrabold">Compte créé !</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                    Votre compte administrateur a été configuré avec succès pour <strong>{form.email}</strong>.
+                  </p>
+                </div>
                 <button
                   onClick={() => navigate('/login')}
-                  className="w-full py-3 px-4 bg-[#1565a8] hover:bg-[#1253a0] text-white font-semibold rounded-lg transition-colors"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-semibold rounded-xl transition-all duration-300 shadow-md"
                 >
-                  Se connecter
+                  Se connecter maintenant
                 </button>
               </div>
             ) : (
-              /* Setup form */
-              <>
-                <div className="mb-6">
-                  <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <ShieldCheck className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Creation du compte administrateur</p>
-                      <p className="text-xs text-blue-600 mt-0.5">
-                        Ce compte aura acces a toutes les fonctionnalites de l'application.
-                      </p>
-                    </div>
-                  </div>
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Créer le compte racine</h2>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Veuillez renseigner les détails du super-administrateur</p>
                 </div>
 
                 {error && (
-                  <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-700">{error}</p>
+                  <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-2xl flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-700 dark:text-rose-400 font-medium">{error}</p>
                   </div>
                 )}
 
@@ -177,29 +190,29 @@ export default function SetupPage() {
                   <div>
                     <label className="label">Nom complet *</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                       <input
                         name="full_name"
                         type="text"
                         value={form.full_name}
                         onChange={handleChange}
-                        className="input pl-10"
-                        placeholder="Votre nom et prenom"
+                        className="input pl-11"
+                        placeholder="Jean Dupont"
                         required
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="label">Email *</label>
+                    <label className="label">Adresse email *</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                       <input
                         name="email"
                         type="email"
                         value={form.email}
                         onChange={handleChange}
-                        className="input pl-10"
+                        className="input pl-11"
                         placeholder="admin@gicosarl.com"
                         required
                       />
@@ -207,16 +220,16 @@ export default function SetupPage() {
                   </div>
 
                   <div>
-                    <label className="label">Telephone</label>
+                    <label className="label">Numéro de téléphone</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                       <input
                         name="phone"
                         type="tel"
                         value={form.phone}
                         onChange={handleChange}
-                        className="input pl-10"
-                        placeholder="+225 XX XX XX XX XX"
+                        className="input pl-11"
+                        placeholder="+225 07 00 00 00 00"
                       />
                     </div>
                   </div>
@@ -224,23 +237,23 @@ export default function SetupPage() {
                   <div>
                     <label className="label">Mot de passe *</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                       <input
                         name="password"
                         type={showPassword ? 'text' : 'password'}
                         value={form.password}
                         onChange={handleChange}
-                        className="input pl-10 pr-10"
-                        placeholder="Minimum 8 caracteres"
+                        className="input pl-11 pr-11"
+                        placeholder="Minimum 8 caractères"
                         required
                         minLength={8}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                       >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
                       </button>
                     </div>
                   </div>
@@ -248,30 +261,30 @@ export default function SetupPage() {
                   <div>
                     <label className="label">Confirmer le mot de passe *</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                       <input
                         name="confirm_password"
                         type={showPassword ? 'text' : 'password'}
                         value={form.confirm_password}
                         onChange={handleChange}
-                        className="input pl-10"
-                        placeholder="Repetez le mot de passe"
+                        className="input pl-11"
+                        placeholder="Confirmer votre mot de passe"
                         required
                       />
                     </div>
                   </div>
 
-                  {/* Password strength */}
+                  {/* Password strength indicators */}
                   {form.password.length > 0 && (
-                    <div className="space-y-1">
+                    <div className="p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl space-y-1.5 border border-slate-100 dark:border-slate-800">
                       {[
-                        { check: form.password.length >= 8, label: 'Au moins 8 caracteres' },
-                        { check: /[A-Z]/.test(form.password), label: 'Une majuscule' },
-                        { check: /[0-9]/.test(form.password), label: 'Un chiffre' },
+                        { check: form.password.length >= 8, label: '8 caractères minimum' },
+                        { check: /[A-Z]/.test(form.password), label: 'Une lettre majuscule' },
+                        { check: /[0-9]/.test(form.password), label: 'Un chiffre ou caractère spécial' },
                       ].map(({ check, label }) => (
-                        <div key={label} className="flex items-center gap-2 text-xs">
-                          <CheckCircle className={`w-3.5 h-3.5 ${check ? 'text-emerald-500' : 'text-gray-300'}`} />
-                          <span className={check ? 'text-emerald-600' : 'text-gray-400'}>{label}</span>
+                        <div key={label} className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider">
+                          <CheckCircle2 className={`w-4 h-4 ${check ? 'text-emerald-500' : 'text-slate-300 dark:text-slate-700'}`} />
+                          <span className={check ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400 dark:text-slate-500'}>{label}</span>
                         </div>
                       ))}
                     </div>
@@ -280,28 +293,28 @@ export default function SetupPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="w-full py-3 px-4 bg-[#1565a8] hover:bg-[#1253a0] text-white font-semibold rounded-lg shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#1565a8] focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg shadow-primary-500/15 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.99] mt-2"
                   >
                     {saving ? (
                       <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Creation du compte...
+                        <Loader2 className="w-4.5 h-4.5 animate-spin" />
+                        Configuration du compte...
                       </span>
                     ) : (
-                      'Creer le compte administrateur'
+                      'Créer le compte racine'
                     )}
                   </button>
                 </form>
 
-                <div className="mt-6 pt-5 border-t border-gray-100 text-center">
-                  <p className="text-xs text-gray-400">
-                    Vous avez deja un compte ?{' '}
-                    <button onClick={() => navigate('/login')} className="text-[#1565a8] hover:underline font-medium">
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 text-center">
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Déjà configuré ?{' '}
+                    <button onClick={() => navigate('/login')} className="text-primary-600 dark:text-primary-400 hover:underline font-bold">
                       Se connecter
                     </button>
                   </p>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>

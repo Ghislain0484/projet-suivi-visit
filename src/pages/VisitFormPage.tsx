@@ -12,10 +12,10 @@ import {
   Calendar,
   Clock,
   FileText,
-  CheckCircle,
   AlertCircle,
   Loader2,
   Search,
+  Sparkles,
 } from 'lucide-react';
 
 export default function VisitFormPage() {
@@ -218,53 +218,57 @@ export default function VisitFormPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600"></div>
+      <div className="flex items-center justify-center h-96">
+        <div className="loading-spinner h-10 w-10"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+    <div className="max-w-3xl mx-auto space-y-6">
+      {/* Header Panel */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400 font-semibold text-xs uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" /> Formulaire de saisie
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {isEditing ? 'Modifier la visite' : 'Enregistrer une visite'}
           </h1>
-          <p className="text-gray-500">
-            {isEditing ? 'Modifiez les informations de la visite' : 'Enregistrez un nouveau visiteur'}
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+            {isEditing ? 'Modifiez les informations de la visite sélectionnée' : 'Enregistrez l\'arrivée d\'un nouveau visiteur'}
           </p>
         </div>
-        <button onClick={() => navigate(-1)} className="btn-secondary">
-          <X className="w-5 h-5 mr-2" />
+        <button onClick={() => navigate(-1)} className="btn-secondary self-start sm:self-auto px-5 py-2.5">
+          <X className="w-4.5 h-4.5 mr-2" />
           Annuler
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-2xl flex items-start gap-3 animate-slide-in-top">
+          <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-rose-700 dark:text-rose-400 font-medium">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Visitor Selection */}
+        
+        {/* Visitor Selection (Only when creating a new visit) */}
         {!isEditing && (
           <div className="card">
             <div className="card-header">
-              <h2 className="font-semibold text-gray-900">Visiteur existant</h2>
+              <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Visiteur existant</h2>
             </div>
-            <div className="card-body">
-              <div className="flex items-center gap-4">
+            <div className="card-body space-y-4">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setShowVisitorSearch(!showVisitorSearch)}
-                  className="btn-secondary"
+                  className={`btn-secondary ${showVisitorSearch ? 'bg-primary-50 dark:bg-primary-950/20 border-primary-500/30 text-primary-600' : ''}`}
                 >
-                  <Search className="w-5 h-5 mr-2" />
-                  Rechercher un visiteur existant
+                  <Search className="w-4.5 h-4.5 mr-2" />
+                  Sélectionner un visiteur existant
                 </button>
                 {formData.visitor_id && (
                   <button
@@ -282,42 +286,45 @@ export default function VisitFormPage() {
                         visitor_notes: '',
                       }));
                     }}
-                    className="text-sm text-red-600 hover:text-red-700"
+                    className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
                   >
-                    Effacer la selection
+                    Effacer la sélection
                   </button>
                 )}
               </div>
 
               {showVisitorSearch && (
-                <div className="mt-4 space-y-4">
+                <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 animate-slide-in-top">
                   <input
                     type="text"
-                    placeholder="Rechercher par nom ou entreprise..."
+                    placeholder="Filtrer les visiteurs par nom ou entreprise..."
                     value={visitorSearch}
                     onChange={(e) => setVisitorSearch(e.target.value)}
-                    className="input"
+                    className="input bg-white dark:bg-slate-900"
                   />
-                  <div className="max-h-48 overflow-y-auto border rounded-lg">
+                  <div className="max-h-48 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 scrollbar-thin">
                     {filteredVisitors.slice(0, 10).map((visitor) => (
                       <button
                         key={visitor.id}
                         type="button"
                         onClick={() => selectExistingVisitor(visitor)}
-                        className={`w-full text-left p-3 hover:bg-gray-50 border-b last:border-b-0 ${
-                          formData.visitor_id === visitor.id ? 'bg-primary-50' : ''
+                        className={`w-full text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between transition-colors ${
+                          formData.visitor_id === visitor.id ? 'bg-primary-50/50 dark:bg-primary-950/30' : ''
                         }`}
                       >
-                        <p className="font-medium">
-                          {visitor.first_name} {visitor.last_name}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {visitor.company} - {visitor.visitor_type}
-                        </p>
+                        <div>
+                          <p className="font-bold text-sm text-slate-800 dark:text-white">
+                            {visitor.first_name} {visitor.last_name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mt-0.5">
+                            {visitor.company || 'Aucune entreprise'}
+                          </p>
+                        </div>
+                        <span className="badge-gray text-[10px] uppercase font-bold">{visitor.visitor_type}</span>
                       </button>
                     ))}
                     {filteredVisitors.length === 0 && (
-                      <p className="p-3 text-gray-500">Aucun visiteur trouve</p>
+                      <p className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">Aucun visiteur trouvé dans le système</p>
                     )}
                   </div>
                 </div>
@@ -326,16 +333,16 @@ export default function VisitFormPage() {
           </div>
         )}
 
-        {/* Visitor Information */}
+        {/* Visitor Information Card */}
         <div className="card">
           <div className="card-header">
-            <h2 className="font-semibold text-gray-900">Informations du visiteur</h2>
+            <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Identité du visiteur</h2>
           </div>
           <div className="card-body space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="first_name" className="label">
-                  Prenom *
+                  Prénom *
                 </label>
                 <input
                   id="first_name"
@@ -383,21 +390,21 @@ export default function VisitFormPage() {
               </select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="phone" className="label">
-                  Telephone
+                  Téléphone
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                   <input
                     id="phone"
                     name="phone"
                     type="tel"
                     value={formData.phone}
                     onChange={handleInputChange}
-                    className="input pl-10"
-                    placeholder="+225 XX XX XX XX"
+                    className="input pl-11"
+                    placeholder="+225 07 00 00 00 00"
                   />
                 </div>
               </div>
@@ -406,14 +413,14 @@ export default function VisitFormPage() {
                   Email
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                   <input
                     id="email"
                     name="email"
                     type="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="input pl-10"
+                    className="input pl-11"
                     placeholder="email@exemple.com"
                   />
                 </div>
@@ -425,14 +432,14 @@ export default function VisitFormPage() {
                 Entreprise / Organisation
               </label>
               <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                 <input
                   id="company"
                   name="company"
                   type="text"
                   value={formData.company}
                   onChange={handleInputChange}
-                  className="input pl-10"
+                  className="input pl-11"
                   placeholder="Nom de l'entreprise"
                 />
               </div>
@@ -449,50 +456,51 @@ export default function VisitFormPage() {
                 onChange={handleInputChange}
                 className="input"
                 rows={2}
-                placeholder="Informations supplementaires..."
+                placeholder="Renseignez des notes complémentaires si nécessaire..."
               />
             </div>
           </div>
         </div>
 
-        {/* Visit Information */}
+        {/* Visit details card */}
         <div className="card">
           <div className="card-header">
-            <h2 className="font-semibold text-gray-900">Informations de la visite</h2>
+            <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Détails de la visite</h2>
           </div>
           <div className="card-body space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="arrival_time" className="label">
-                  Date et heure d'arrivee *
+                  Date et heure d'arrivée *
                 </label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                   <input
                     id="arrival_time"
                     name="arrival_time"
                     type="datetime-local"
                     value={formData.arrival_time}
                     onChange={handleInputChange}
-                    className="input pl-10"
+                    className="input pl-11"
                     required
                   />
                 </div>
               </div>
+              
               <div>
                 <label htmlFor="service_id" className="label">
-                  Service concerne
+                  Service concerné
                 </label>
                 <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                   <select
                     id="service_id"
                     name="service_id"
                     value={formData.service_id}
                     onChange={handleInputChange}
-                    className="input pl-10"
+                    className="input pl-11"
                   >
-                    <option value="">Selectionnez un service</option>
+                    <option value="">Sélectionnez un service...</option>
                     {services.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -514,18 +522,16 @@ export default function VisitFormPage() {
                 onChange={handleInputChange}
                 className="input"
                 rows={2}
-                placeholder="Decrivez le motif de la visite..."
+                placeholder="Renseignez le motif exact de la visite (ex: Dépôt de dossier, Réunion technique...)"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="has_appointment" className="label">
-                  Rendez-vous prevu
-                </label>
-                <div className="flex items-center gap-4 mt-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                <label className="label">Rendez-vous prévu</label>
+                <div className="flex gap-6 mt-2">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-slate-700 dark:text-slate-300">
                     <input
                       type="radio"
                       name="has_appointment"
@@ -533,9 +539,9 @@ export default function VisitFormPage() {
                       onChange={() => setFormData((p) => ({ ...p, has_appointment: true }))}
                       className="w-4 h-4 text-primary-600"
                     />
-                    <span className="text-sm">Oui</span>
+                    Oui
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-sm text-slate-700 dark:text-slate-300">
                     <input
                       type="radio"
                       name="has_appointment"
@@ -543,24 +549,25 @@ export default function VisitFormPage() {
                       onChange={() => setFormData((p) => ({ ...p, has_appointment: false }))}
                       className="w-4 h-4 text-primary-600"
                     />
-                    <span className="text-sm">Non</span>
+                    Non
                   </label>
                 </div>
               </div>
+
               <div>
                 <label htmlFor="person_to_meet" className="label">
-                  Personne a rencontrer
+                  Collaborateur à rencontrer
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
                   <input
                     id="person_to_meet"
                     name="person_to_meet"
                     type="text"
                     value={formData.person_to_meet}
                     onChange={handleInputChange}
-                    className="input pl-10"
-                    placeholder="Nom de la personne"
+                    className="input pl-11"
+                    placeholder="Nom du collaborateur"
                   />
                 </div>
               </div>
@@ -568,7 +575,7 @@ export default function VisitFormPage() {
 
             <div>
               <label htmlFor="comments" className="label">
-                Commentaires / Observations
+                Commentaires / Observations d'accueil
               </label>
               <textarea
                 id="comments"
@@ -577,31 +584,32 @@ export default function VisitFormPage() {
                 onChange={handleInputChange}
                 className="input"
                 rows={3}
-                placeholder="Remarques supplementaires..."
+                placeholder="Ajoutez des observations (ex: Bagages, Dossier physique manquant...)"
               />
             </div>
           </div>
         </div>
 
-        {/* Submit */}
-        <div className="flex justify-end gap-4">
-          <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
+        {/* Submit Actions */}
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={() => navigate(-1)} className="btn-secondary px-5 py-2.5">
             Annuler
           </button>
-          <button type="submit" disabled={saving} className="btn-primary">
+          <button type="submit" disabled={saving} className="btn-primary px-6 py-2.5">
             {saving ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <Loader2 className="w-4.5 h-4.5 mr-2 animate-spin" />
                 Enregistrement...
               </>
             ) : (
               <>
-                <Save className="w-5 h-5 mr-2" />
+                <Save className="w-4.5 h-4.5 mr-2" />
                 {isEditing ? 'Enregistrer les modifications' : 'Enregistrer la visite'}
               </>
             )}
           </button>
         </div>
+
       </form>
     </div>
   );

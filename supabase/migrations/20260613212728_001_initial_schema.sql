@@ -140,7 +140,7 @@ CREATE POLICY "services_delete" ON services FOR DELETE TO authenticated USING (E
 
 -- RLS Policies for profiles
 CREATE POLICY "profiles_select" ON profiles FOR SELECT TO authenticated USING (true);
-CREATE POLICY "profiles_insert" ON profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "profiles_insert" ON profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "profiles_update" ON profiles FOR UPDATE TO authenticated USING (auth.uid() = id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 -- RLS Policies for visitors
@@ -198,13 +198,13 @@ CREATE TRIGGER update_visits_updated_at BEFORE UPDATE ON visits FOR EACH ROW EXE
 CREATE TRIGGER update_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_followups_updated_at BEFORE UPDATE ON visit_followups FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Insert default services
-INSERT INTO services (name, description) VALUES
-('Service informatique', 'Gestion des systèmes informatiques et support technique'),
-('Service IMO', 'Immobilier et operations immobilières'),
-('Service technique', 'Maintenance et operations techniques'),
-('Service suivi des ACD', 'Suivi et gestion des ACD'),
-('Direction Générale', 'Direction et stratégie de l''entreprise'),
-('Administration', 'Services administratifs'),
-('Comptabilité / Finance', 'Gestion financière et comptabilité'),
-('Autres services', 'Services divers');
+-- Insert default services with fixed UUIDs to match demo data references
+INSERT INTO services (id, name, description) VALUES
+('17f2b27c-350a-41bc-bffe-99fdda2aab8b', 'Service informatique', 'Gestion des systèmes informatiques et support technique'),
+('a37fb89b-7e61-4560-84fe-b9c1b4834ff8', 'Service IMO', 'Immobilier et operations immobilières'),
+('32d81751-a260-485e-8b14-80362de13313', 'Service technique', 'Maintenance et operations techniques'),
+('32a3c0c6-0b0f-4173-8e6f-4b1178c51270', 'Service suivi des ACD', 'Suivi et gestion des ACD'),
+('89341b8b-2858-4f08-9f5c-02167908eab5', 'Direction Générale', 'Direction et stratégie de l''entreprise'),
+('b5cf3c00-d8cb-402a-9f5e-141cd0c3eb1a', 'Administration', 'Services administratifs'),
+('c7a72387-ec6b-4e1b-ad34-d02fe1dbd244', 'Comptabilité / Finance', 'Gestion financière et comptabilité'),
+('d5d9c282-3d5f-4a0b-93df-8cd5e150ee18', 'Autres services', 'Services divers');

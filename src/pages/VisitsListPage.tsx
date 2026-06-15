@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase, Visit, Service } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import {
   Search,
   Plus,
@@ -11,11 +10,9 @@ import {
   Download,
   Eye,
   Calendar,
-  Clock,
   User,
   Building2,
   CheckCircle,
-  XCircle,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -88,7 +85,34 @@ export default function VisitsListPage() {
     } else if (error) {
       console.error("Error fetching visits:", error);
     }
-    setLoading(false);
+  };
+
+  const exportToCSV = () => {
+    if (visits.length === 0) return;
+    const headers = ['Code', 'Visiteur Prenom', 'Visiteur Nom', 'Entreprise', 'Motif', 'Service', 'Date Arrivee', 'Date Depart', 'Statut'];
+    const rows = visits.map((v) => [
+      v.visit_code,
+      v.visitor?.first_name || '',
+      v.visitor?.last_name || '',
+      v.visitor?.company || '',
+      v.purpose,
+      v.service?.name || '',
+      v.arrival_time ? format(new Date(v.arrival_time), 'yyyy-MM-dd HH:mm') : '',
+      v.departure_time ? format(new Date(v.departure_time), 'yyyy-MM-dd HH:mm') : '',
+      v.status
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((r) => r.map((val) => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `GICO_Visites_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -116,15 +140,20 @@ export default function VisitsListPage() {
 
   const getStatusBadge = (status: string) => {
     const config = {
-      in_progress: { label: 'En cours', class: 'badge-info', dot: 'dot-pulse-primary' },
+      in_progress: { label: 'En attente', class: 'badge-info', dot: 'dot-pulse-primary' },
+      en_cours: { label: 'En entretien', class: 'bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200/20', dot: 'bg-amber-500 animate-pulse' },
+      traite: { label: 'Traité', class: 'badge-success', dot: 'dot-pulse-success' },
+      a_relancer: { label: 'À relancer', class: 'bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200/20', dot: 'bg-rose-500 animate-pulse' },
+      transforme: { label: 'Opportunité', class: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border border-indigo-200/20', dot: 'bg-indigo-500 animate-pulse' },
       completed: { label: 'Terminé', class: 'badge-success', dot: 'dot-pulse-success' },
       cancelled: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
+      annule: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
     };
     const current = config[status as keyof typeof config] || { label: status, class: 'badge-gray', dot: 'bg-slate-400' };
     
     return (
       <span className={`${current.class} flex items-center gap-1.5`}>
-        <span className={current.dot} />
+        <span className={`${current.dot} w-2 h-2 rounded-full`} />
         {current.label}
       </span>
     );
@@ -294,7 +323,7 @@ export default function VisitsListPage() {
         <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
           {pagination.total} {pagination.total > 1 ? 'visites trouvées' : 'visite trouvée'}
         </p>
-        <button className="btn-secondary text-xs px-4 py-2 border border-slate-200 dark:border-slate-800">
+        <button onClick={exportToCSV} className="btn-secondary text-xs px-4 py-2 border border-slate-200 dark:border-slate-800">
           <Download className="w-4 h-4 mr-1.5" />
           Exporter CSV
         </button>

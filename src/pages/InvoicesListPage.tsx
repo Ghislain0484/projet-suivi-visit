@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase, Invoice, Service, Visit } from '../lib/supabase';
+import { supabase, Invoice, Service } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -11,15 +11,12 @@ import {
   Download,
   Eye,
   Edit,
-  CheckCircle,
   AlertTriangle,
-  Clock,
   DollarSign,
   TrendingUp,
-  Calendar,
   X,
   Save,
-  RefreshCw,
+  Printer,
 } from 'lucide-react';
 
 export default function InvoicesListPage() {
@@ -42,6 +39,10 @@ export default function InvoicesListPage() {
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
 
+  // Print states
+  const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<Invoice | null>(null);
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+
   const [stats, setStats] = useState({
     totalInvoiced: 0,
     totalPaid: 0,
@@ -49,6 +50,27 @@ export default function InvoicesListPage() {
     pendingCount: 0,
     lateCount: 0,
   });
+
+  const handlePrintInvoice = async (invoice: Invoice) => {
+    try {
+      const { data: items, error } = await supabase
+        .from('invoice_items')
+        .select(`*, service_item:service_items(*)`)
+        .eq('invoice_id', invoice.id);
+      
+      if (!error && items) {
+        setInvoiceItems(items);
+      } else {
+        setInvoiceItems([]);
+      }
+      setSelectedInvoiceForPrint(invoice);
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } catch (err) {
+      console.error("Error preparing print:", err);
+    }
+  };
 
   useEffect(() => {
     fetchServices();
@@ -112,6 +134,35 @@ export default function InvoicesListPage() {
       setStats({ totalInvoiced, totalPaid, totalRemaining, pendingCount, lateCount });
     }
     setLoading(false);
+  };
+
+  const exportToCSV = () => {
+    if (invoices.length === 0) return;
+    const headers = ['Code Visite', 'Visiteur Prenom', 'Visiteur Nom', 'Service Responsable', 'Montant Total', 'Montant Paye', 'Reste a Solder', 'Statut Paiement', 'Statut Prestation', 'Date Facture'];
+    const rows = invoices.map((inv) => [
+      inv.visit?.visit_code || '',
+      inv.visit?.visitor?.first_name || '',
+      inv.visit?.visitor?.last_name || '',
+      (inv as any).responsible_service?.name || '',
+      inv.amount || 0,
+      inv.amount_paid || 0,
+      (inv.amount || 0) - (inv.amount_paid || 0),
+      inv.payment_status,
+      inv.service_status,
+      inv.invoice_date || ''
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((r) => r.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `GICO_Factures_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleUpdateInvoice = async (invoiceId: string, updates: Partial<Invoice>) => {
@@ -284,13 +335,22 @@ export default function InvoicesListPage() {
                 className="input pl-10"
               />
             </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`btn-secondary ${showFilters ? 'bg-primary-50 border-primary-300' : ''}`}
-            >
-              <Filter className="w-5 h-5 mr-2" />
-              Filtres
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`btn-secondary ${showFilters ? 'bg-primary-50 border-primary-300' : ''}`}
+              >
+                <Filter className="w-5 h-5 mr-2" />
+                Filtres
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="btn-secondary"
+              >
+                <Download className="w-5 h-5 mr-2" />
+                Exporter CSV
+              </button>
+            </div>
           </div>
 
           {showFilters && (
@@ -455,6 +515,15 @@ export default function InvoicesListPage() {
                           >
                             <Eye className="w-4 h-4 text-gray-600" />
                           </Link>
+                          {invoice.is_billable && (
+                            <button
+                              onClick={() => handlePrintInvoice(invoice)}
+                              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-slate-600 dark:text-slate-400"
+                              title="Imprimer Facture / Reçu"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          )}
                           {invoice.is_billable && invoice.payment_status !== 'paid' && canRecordPayment && (
                             <button
                               onClick={() => {
@@ -639,6 +708,128 @@ export default function InvoicesListPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Print only template */}
+      {selectedInvoiceForPrint && (
+        <div className="print-only p-8 max-w-4xl mx-auto bg-white text-black font-sans">
+          <div className="flex justify-between items-start border-b-2 border-slate-300 pb-6 mb-6">
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-800">GICO SARL</h1>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Gestion & Intégration de Services Collaboratifs</p>
+              <p className="text-xs text-slate-400 mt-2">RCCM: BF-OUA-2026-B-1234 | IFU: 00123456X</p>
+              <p className="text-xs text-slate-400">Siège Social: Ouagadougou, Burkina Faso</p>
+              <p className="text-xs text-slate-400">Tél: +226 25 30 00 00 | Email: contact@gico.bf</p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                {selectedInvoiceForPrint.payment_status === 'paid' ? 'Reçu de Paiement' : 'Facture de Prestation'}
+              </span>
+              <p className="text-sm font-mono font-bold mt-4 text-slate-700">Code: {(selectedInvoiceForPrint as any).visit?.visit_code || 'N/A'}</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Date: {format(new Date(selectedInvoiceForPrint.invoice_date || selectedInvoiceForPrint.created_at || Date.now()), 'dd/MM/yyyy', { locale: fr })}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-8 mb-8 text-xs">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-2">Facturé à</p>
+              <p className="text-sm font-bold text-slate-800">
+                {(selectedInvoiceForPrint as any).visit?.visitor?.first_name || ''} {(selectedInvoiceForPrint as any).visit?.visitor?.last_name || ''}
+              </p>
+              {(selectedInvoiceForPrint as any).visit?.visitor?.company && (
+                <p className="font-semibold text-slate-500 mt-0.5">{(selectedInvoiceForPrint as any).visit?.visitor?.company}</p>
+              )}
+              {(selectedInvoiceForPrint as any).visit?.visitor?.phone && (
+                <p className="text-slate-400 mt-2">Tél: {(selectedInvoiceForPrint as any).visit?.visitor?.phone}</p>
+              )}
+              {(selectedInvoiceForPrint as any).visit?.visitor?.email && (
+                <p className="text-slate-400">Email: {(selectedInvoiceForPrint as any).visit?.visitor?.email}</p>
+              )}
+            </div>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-between">
+              <div>
+                <p className="font-bold text-slate-400 uppercase tracking-wider mb-2">Détails de visite</p>
+                <p className="font-semibold text-slate-700">Motif: {(selectedInvoiceForPrint as any).visit?.purpose || 'N/A'}</p>
+                <p className="font-semibold text-slate-700">Service de traitement: {(selectedInvoiceForPrint as any).responsible_service?.name || '-'}</p>
+              </div>
+              <div>
+                {((selectedInvoiceForPrint as any).visit?.arrival_time) && (
+                  <p className="text-[10px] text-slate-400 mt-4">
+                    Arrivée: {format(new Date((selectedInvoiceForPrint as any).visit.arrival_time), 'dd/MM/yyyy HH:mm', { locale: fr })}
+                  </p>
+                )}
+                {((selectedInvoiceForPrint as any).visit?.departure_time) && (
+                  <p className="text-[10px] text-slate-400">
+                    Départ: {format(new Date((selectedInvoiceForPrint as any).visit.departure_time), 'dd/MM/yyyy HH:mm', { locale: fr })}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse text-xs mb-8">
+            <thead>
+              <tr className="border-b-2 border-slate-300 text-slate-400 uppercase tracking-wider font-bold">
+                <th className="py-3 pr-4">Description Prestation</th>
+                <th className="py-3 px-4 text-right">Prix Unitaire</th>
+                <th className="py-3 px-4 text-center">Quantité</th>
+                <th className="py-3 pl-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoiceItems.length > 0 ? (
+                invoiceItems.map((si, idx) => (
+                  <tr key={idx} className="border-b border-slate-100 text-slate-700 font-medium">
+                    <td className="py-3 pr-4 font-bold">{si.service_item?.name || 'Prestation'}</td>
+                    <td className="py-3 px-4 text-right">{(si.unit_price || 0).toLocaleString('fr-FR')} XOF</td>
+                    <td className="py-3 px-4 text-center">{si.quantity}</td>
+                    <td className="py-3 pl-4 text-right font-bold">{(si.total_price || 0).toLocaleString('fr-FR')} XOF</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-slate-100 text-slate-700 font-medium">
+                  <td className="py-3 pr-4 font-bold">Frais de Prestation Générale</td>
+                  <td className="py-3 px-4 text-right">{Number(selectedInvoiceForPrint.amount).toLocaleString('fr-FR')} XOF</td>
+                  <td className="py-3 px-4 text-center">1</td>
+                  <td className="py-3 pl-4 text-right font-bold">{Number(selectedInvoiceForPrint.amount).toLocaleString('fr-FR')} XOF</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          <div className="flex justify-end mb-12">
+            <div className="w-64 space-y-2.5 text-xs">
+              <div className="flex justify-between font-semibold text-slate-500">
+                <span>Montant Global:</span>
+                <span className="text-slate-800">{Number(selectedInvoiceForPrint.amount).toLocaleString('fr-FR')} XOF</span>
+              </div>
+              <div className="flex justify-between font-semibold text-emerald-600">
+                <span>Montant Versé:</span>
+                <span>{Number(selectedInvoiceForPrint.amount_paid).toLocaleString('fr-FR')} XOF</span>
+              </div>
+              <div className="h-px bg-slate-200" />
+              <div className="flex justify-between font-black text-sm text-slate-800">
+                <span>Reste à payer:</span>
+                <span className={Number(selectedInvoiceForPrint.amount) - Number(selectedInvoiceForPrint.amount_paid) > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                  {Math.max(0, Number(selectedInvoiceForPrint.amount) - Number(selectedInvoiceForPrint.amount_paid)).toLocaleString('fr-FR')} XOF
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-12 text-center text-xs mt-16">
+            <div className="border-t border-slate-300 pt-6">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">Le Client</p>
+              <p className="italic text-slate-300">Bon pour accord & signature</p>
+            </div>
+            <div className="border-t border-slate-300 pt-6">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">La Caisse GICO</p>
+              <p className="italic text-slate-300">Cachet & Signature</p>
+            </div>
           </div>
         </div>
       )}

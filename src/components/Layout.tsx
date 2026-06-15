@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard,
   Users,
   Calendar,
-  FileText,
   CreditCard,
   Settings,
   LogOut,
@@ -17,19 +16,27 @@ import {
   BarChart3,
   Briefcase,
   UserCog,
-  AlertTriangle,
   Moon,
   Sun,
   ChevronLeft,
   ChevronRight,
   Check,
+  Clock,
+  MapPin,
+  HeartPulse,
+  FolderLock,
 } from 'lucide-react';
-import { supabase, Service, Notification as NotificationType } from '../lib/supabase';
+import { supabase, Notification as NotificationType } from '../lib/supabase';
 
 const navItems = [
-  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier'] },
-  { path: '/visits', label: 'Visites', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier'] },
+  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'] },
+  { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'] },
   { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception'] },
+  { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
+  { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
+  { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator'] },
+  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director'] },
+  { path: '/infirmerie', label: 'Infirmerie', icon: HeartPulse, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager'] },
   { path: '/invoices', label: 'Facturation', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier'] },
   { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director'] },
@@ -45,7 +52,7 @@ export default function Layout() {
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [urgentCases, setUrgentCases] = useState(0);
-  const [services, setServices] = useState<Service[]>([]);
+
   
   // Theme and Collapse state
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -64,7 +71,6 @@ export default function Layout() {
 
   useEffect(() => {
     fetchNotifications();
-    fetchServices();
     fetchUrgentCases();
   }, [user]);
 
@@ -101,10 +107,6 @@ export default function Layout() {
     }
   };
 
-  const fetchServices = async () => {
-    const { data } = await supabase.from('services').select('*').eq('is_active', true);
-    if (data) setServices(data);
-  };
 
   const fetchUrgentCases = async () => {
     const { count } = await supabase
@@ -128,10 +130,12 @@ export default function Layout() {
     const labels: Record<string, string> = {
       admin: 'Administrateur',
       director: 'Directeur General',
-      reception: 'Reception',
+      reception: 'Assistante de Direction',
       service_manager: 'Responsable Service',
       accounting: 'Comptabilite',
-      cashier: 'Caissier(ere)',
+      cashier: 'Caissier(ère)',
+      collaborator: 'Collaborateur',
+      nurse: 'Infirmier',
     };
     return labels[role] || role;
   };

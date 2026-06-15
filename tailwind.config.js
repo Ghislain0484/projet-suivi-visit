@@ -16,6 +16,7 @@ export default {
           700: '#1e3a8a',
           800: '#1e3a8a',
           900: '#172554',
+          950: '#0b1329',
         },
         gold: {
           50: '#fefce8',
@@ -28,6 +29,7 @@ export default {
           700: '#a16207',
           800: '#854d0e',
           900: '#713f12',
+          950: '#422006',
         },
         slate: {
           950: '#070a13', // Deep slate for rich dark backgrounds

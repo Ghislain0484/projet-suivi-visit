@@ -14,6 +14,11 @@ import InvoicesListPage from './pages/InvoicesListPage';
 import UsersListPage from './pages/UsersListPage';
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import AgendaPage from './pages/AgendaPage';
+import RHPage from './pages/RHPage';
+import MissionsPage from './pages/MissionsPage';
+import PermissionsPage from './pages/PermissionsPage';
+import InfirmeriePage from './pages/InfirmeriePage';
 
 function UnauthorizedPage() {
   return (
@@ -123,6 +128,28 @@ function App() {
                 </AuthGuard>
               }
             />
+
+            {/* Agenda */}
+            <Route path="agenda" element={<AgendaPage />} />
+
+            {/* RH & Presence */}
+            <Route path="rh" element={<RHPage />} />
+
+            {/* Missions */}
+            <Route path="missions" element={<MissionsPage />} />
+
+            {/* Permissions Approval */}
+            <Route
+              path="permissions"
+              element={
+                <AuthGuard requiredRoles={['admin', 'director']}>
+                  <PermissionsPage />
+                </AuthGuard>
+              }
+            />
+
+            {/* Infirmerie */}
+            <Route path="infirmerie" element={<InfirmeriePage />} />
           </Route>
 
           {/* Catch-all redirect */}

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, Profile, Service, UserRole } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -10,18 +9,16 @@ import {
   X,
   Save,
   UserCog,
-  Shield,
   Building2,
   Mail,
   Phone,
-  Calendar,
   CheckCircle,
   XCircle,
   Loader2,
 } from 'lucide-react';
 
 export default function UsersListPage() {
-  const { profile: currentUser } = useAuth();
+
   const [users, setUsers] = useState<Profile[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,6 +142,8 @@ export default function UsersListPage() {
       service_manager: 'Responsable Service',
       accounting: 'Comptabilite',
       cashier: 'Caissier / Caisse',
+      collaborator: 'Collaborateur',
+      nurse: 'Infirmier / Santé',
     };
     return labels[role] || role;
   };
@@ -157,6 +156,8 @@ export default function UsersListPage() {
       accounting: 'bg-gold-100 text-gold-700',
       reception: 'bg-gray-100 text-gray-700',
       cashier: 'bg-emerald-100 text-emerald-700',
+      collaborator: 'bg-indigo-100 text-indigo-700',
+      nurse: 'bg-teal-100 text-teal-700',
     };
     return colors[role] || colors.reception;
   };

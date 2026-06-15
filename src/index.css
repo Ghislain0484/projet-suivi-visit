@@ -253,3 +253,33 @@
   animation: zoomIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+@media print {
+  /* Hide all interactive and layout components */
+  aside, nav, header, button, .no-print, .btn, .comments-section, .followup-section, .sidebar, .navbar, .tab-buttons {
+    display: none !important;
+  }
+  
+  /* Reset container layout for printing */
+  body, main, .main-content {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Show print-only template */
+  .print-only {
+    display: block !important;
+  }
+
+  /* Adjust prints margins and page breaks */
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+}
+
+.print-only {
+  display: none;
+}
+

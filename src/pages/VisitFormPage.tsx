@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase, Service, Visitor, Visit, VisitorType } from '../lib/supabase';
+import { supabase, Service, Visitor, VisitorType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Save,
@@ -10,8 +10,6 @@ import {
   Phone,
   Mail,
   Calendar,
-  Clock,
-  FileText,
   AlertCircle,
   Loader2,
   Search,
@@ -20,7 +18,7 @@ import {
 
 export default function VisitFormPage() {
   const { id } = useParams();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const isEditing = Boolean(id);
 
@@ -72,7 +70,7 @@ export default function VisitFormPage() {
 
   const fetchVisit = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('visits')
       .select(`*, visitor:visitors(*)`)
       .eq('id', id)

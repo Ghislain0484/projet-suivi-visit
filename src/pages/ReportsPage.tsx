@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -6,29 +6,17 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   AreaChart,
   Area,
 } from 'recharts';
-import { supabase, Service, Visit } from '../lib/supabase';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, subMonths } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { supabase } from '../lib/supabase';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import {
-  Calendar,
   Download,
-  FileText,
-  TrendingUp,
-  Users,
-  Building2,
-  CreditCard,
-  Clock,
-  Filter,
   RefreshCw,
 } from 'lucide-react';
 
@@ -38,7 +26,6 @@ export default function ReportsPage() {
   const [periodType, setPeriodType] = useState<'day' | 'week' | 'month' | 'custom'>('month');
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState({
     visitsByDay: [] as { date: string; visits: number }[],
@@ -54,14 +41,8 @@ export default function ReportsPage() {
   });
 
   useEffect(() => {
-    fetchServices();
     fetchReportData();
   }, [periodType, dateFrom, dateTo]);
-
-  const fetchServices = async () => {
-    const { data } = await supabase.from('services').select('*').eq('is_active', true);
-    if (data) setServices(data);
-  };
 
   const fetchReportData = async () => {
     setLoading(true);
@@ -81,26 +62,27 @@ export default function ReportsPage() {
           ? endOfMonth(new Date())
           : endOfDay(new Date(dateTo));
 
-    // Fetch visits with related data
-    const { data: visits } = await supabase
-      .from('visits')
-      .select(
-        `
-        *,
-        visitor:visitors(*),
-        service:services(*)
-      `
-      )
-      .gte('arrival_time', fromDate.toISOString())
-      .lte('arrival_time', toDate.toISOString())
-      .order('arrival_time', { ascending: true });
+    // Fetch visits and invoices in parallel (Option B optimization)
+    const [visitsRes, invoicesRes] = await Promise.all([
+      supabase
+        .from('visits')
+        .select(`
+          *,
+          visitor:visitors(*),
+          service:services(*)
+        `)
+        .gte('arrival_time', fromDate.toISOString())
+        .lte('arrival_time', toDate.toISOString())
+        .order('arrival_time', { ascending: true }),
+      supabase
+        .from('invoices')
+        .select('*')
+        .gte('created_at', fromDate.toISOString())
+        .lte('created_at', toDate.toISOString())
+    ]);
 
-    // Fetch invoices
-    const { data: invoices } = await supabase
-      .from('invoices')
-      .select('*')
-      .gte('created_at', fromDate.toISOString())
-      .lte('created_at', toDate.toISOString());
+    const visits = visitsRes.data;
+    const invoices = invoicesRes.data;
 
     if (visits) {
       // Visits by day

@@ -17,11 +17,11 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier';
+export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier' | 'collaborator' | 'nurse';
 
 export type VisitorType = 'client' | 'prospect' | 'supplier' | 'partner' | 'other';
 
-export type VisitStatus = 'in_progress' | 'completed' | 'cancelled';
+export type VisitStatus = 'in_progress' | 'completed' | 'cancelled' | 'traite' | 'en_cours' | 'a_relancer' | 'transforme' | 'annule';
 
 export type PaymentStatus = 'not_invoiced' | 'invoiced' | 'paid' | 'partially_paid' | 'cancelled';
 
@@ -87,6 +87,10 @@ export interface Visit {
   purpose: string;
   has_appointment: boolean;
   person_to_meet: string | null;
+  assigned_collaborator_id: string | null;
+  observations: string | null;
+  report: string | null;
+  attachments: string[] | null;
   service_id: string | null;
   comments: string | null;
   status: VisitStatus;
@@ -95,6 +99,8 @@ export interface Visit {
   updated_at: string;
   visitor?: Visitor;
   service?: Service;
+  collaborator?: Profile;
+  assigned_collaborator?: { id: string; full_name: string; role: UserRole } | null;
 }
 
 export interface Invoice {
@@ -164,6 +170,86 @@ export interface Notification {
   message: string;
   type: NotificationType;
   is_read: boolean;
+  read_at: string | null;
+  response_status: 'pending' | 'accepted' | 'busy' | 'refused';
   link: string | null;
   created_at: string;
+}
+
+export interface Appointment {
+  id: string;
+  visit_id: string | null;
+  visitor_id: string | null;
+  title: string;
+  description: string | null;
+  start_time: string;
+  end_time: string;
+  assigned_to: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  visitor?: Visitor;
+  collaborator?: Profile;
+}
+
+export interface HRPresence {
+  id: string;
+  user_id: string;
+  date: string;
+  arrival_time: string;
+  break_start: string | null;
+  break_end: string | null;
+  departure_time: string | null;
+  qr_code_token: string | null;
+  gps_location: string | null;
+  status: 'present' | 'pause' | 'mission' | 'displacement' | 'absent' | 'leave' | 'permission';
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface Mission {
+  id: string;
+  user_id: string;
+  destination: string;
+  purpose: string;
+  departure_time: string;
+  expected_return: string;
+  actual_return: string | null;
+  gps_coordinates: string | null;
+  status: 'planned' | 'in_progress' | 'completed';
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface Permission {
+  id: string;
+  user_id: string;
+  type: 'permission' | 'absence' | 'leave';
+  reason: string;
+  start_date: string;
+  end_date: string;
+  status: 'pending' | 'approved' | 'rejected';
+  validated_by: string | null;
+  validated_at: string | null;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface MedicalRequest {
+  id: string;
+  user_id: string;
+  request_type: 'consultation' | 'sickness' | 'rest';
+  symptoms: string;
+  nurse_opinion: string | null;
+  prescription: string | null;
+  rest_days_granted: number;
+  status: 'pending' | 'processed' | 'rejected';
+  processed_by: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
 }

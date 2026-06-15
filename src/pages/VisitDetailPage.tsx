@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem, InvoiceItem } from '../lib/supabase';
+import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Building2,
   Calendar,
-  Clock,
   User,
   Phone,
   Mail,
@@ -18,9 +17,7 @@ import {
   CreditCard,
   MessageSquare,
   Send,
-  AlertTriangle,
   Plus,
-  ArrowUpRight,
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
@@ -38,6 +35,10 @@ export default function VisitDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [treatmentObservations, setTreatmentObservations] = useState('');
+  const [treatmentReport, setTreatmentReport] = useState('');
+  const [closingStatus, setClosingStatus] = useState('traite');
+  const [savingTreatment, setSavingTreatment] = useState(false);
 
   // Billing and Payment states
   const [catalogItems, setCatalogItems] = useState<ServiceItem[]>([]);
@@ -87,7 +88,8 @@ export default function VisitDetailPage() {
         `
         *,
         visitor:visitors(*),
-        service:services(*)
+        service:services(*),
+        assigned_collaborator:profiles!visits_assigned_collaborator_id_fkey(id, full_name, role)
       `
       )
       .eq('id', id)
@@ -95,6 +97,13 @@ export default function VisitDetailPage() {
 
     if (visitData) {
       setVisit(visitData);
+      setTreatmentObservations(visitData.observations || '');
+      setTreatmentReport(visitData.report || '');
+      if (visitData.status === 'en_cours' || visitData.status === 'in_progress') {
+        setClosingStatus('traite');
+      } else {
+        setClosingStatus(visitData.status);
+      }
 
       // Fetch invoice
       const { data: invoiceData } = await supabase
@@ -149,6 +158,125 @@ export default function VisitDetailPage() {
       if (commentsData) setComments(commentsData);
     }
     setLoading(false);
+  };
+
+  const handleTakeCharge = async () => {
+    if (!visit || !profile || !user) return;
+    setSavingTreatment(true);
+    const { error } = await supabase
+      .from('visits')
+      .update({
+        assigned_collaborator_id: profile.id,
+        status: 'en_cours',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', visit.id);
+
+    if (!error) {
+      await supabase.from('activity_logs').insert({
+        user_id: user.id,
+        action: 'TAKE_CHARGE',
+        entity_type: 'visit',
+        entity_id: visit.id,
+        details: { collaborator: profile.full_name },
+      });
+
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user.id,
+        content: `💼 Visite prise en charge par ${profile.full_name}. Statut mis en entretien.`,
+      });
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la prise en charge : " + error.message);
+    }
+    setSavingTreatment(false);
+  };
+
+  const handleSaveObservations = async () => {
+    if (!visit) return;
+    setSavingTreatment(true);
+    const { error } = await supabase
+      .from('visits')
+      .update({
+        observations: treatmentObservations,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', visit.id);
+
+    if (!error) {
+      alert("Observations enregistrées avec succès !");
+      fetchVisit();
+    } else {
+      alert("Erreur lors de l'enregistrement : " + error.message);
+    }
+    setSavingTreatment(false);
+  };
+
+  const handleCloseVisit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!visit || !profile || !user) return;
+    if (!treatmentReport.trim()) {
+      alert("Le compte rendu final est obligatoire pour clôturer la visite.");
+      return;
+    }
+
+    setSavingTreatment(true);
+    const { error } = await supabase
+      .from('visits')
+      .update({
+        status: closingStatus as any,
+        report: treatmentReport.trim(),
+        observations: treatmentObservations.trim(),
+        departure_time: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', visit.id);
+
+    if (!error) {
+      await supabase.from('activity_logs').insert({
+        user_id: user.id,
+        action: 'CLOSE_VISIT',
+        entity_type: 'visit',
+        entity_id: visit.id,
+        details: { status: closingStatus, collaborator: profile.full_name },
+      });
+
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user.id,
+        content: `✅ Visite clôturée (${closingStatus === 'traite' ? 'Traité' : closingStatus === 'a_relancer' ? 'À relancer' : closingStatus === 'transforme' ? 'Transformé' : 'Terminé'}) par ${profile.full_name}. Compte-rendu fourni.`,
+      });
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la clôture de la visite : " + error.message);
+    }
+    setSavingTreatment(false);
+  };
+
+  const handleReleaseCharge = async () => {
+    if (!visit || !user) return;
+    setSavingTreatment(true);
+    const { error } = await supabase
+      .from('visits')
+      .update({
+        assigned_collaborator_id: null,
+        status: 'in_progress',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', visit.id);
+
+    if (!error) {
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user.id,
+        content: `🔄 Prise en charge abandonnée. La visite est retournée dans la file d'attente générale.`,
+      });
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la libération : " + error.message);
+    }
+    setSavingTreatment(false);
   };
 
   const fetchServices = async () => {
@@ -329,16 +457,35 @@ export default function VisitDetailPage() {
     return labels[type] || type;
   };
 
+  const getRoleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      admin: 'Administrateur',
+      director: 'Directeur Général',
+      reception: 'Réception / Secrétariat',
+      service_manager: 'Responsable Service',
+      accounting: 'Comptabilité',
+      cashier: 'Caissier / Caisse',
+      collaborator: 'Collaborateur',
+      nurse: 'Infirmier',
+    };
+    return labels[role] || role;
+  };
+
   const getStatusBadge = (status: string) => {
     const config = {
-      in_progress: { label: 'En cours', class: 'badge-info', dot: 'dot-pulse-primary' },
+      in_progress: { label: 'En attente', class: 'badge-info', dot: 'dot-pulse-primary' },
+      en_cours: { label: 'En entretien', class: 'bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200/20', dot: 'bg-amber-500 animate-pulse' },
+      traite: { label: 'Traité', class: 'badge-success', dot: 'dot-pulse-success' },
+      a_relancer: { label: 'À relancer', class: 'bg-rose-100 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200/20', dot: 'bg-rose-500 animate-pulse' },
+      transforme: { label: 'Opportunité', class: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 border border-indigo-200/20', dot: 'bg-indigo-500 animate-pulse' },
       completed: { label: 'Terminé', class: 'badge-success', dot: 'dot-pulse-success' },
       cancelled: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
+      annule: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
     };
     const current = config[status as keyof typeof config] || { label: status, class: 'badge-gray', dot: 'bg-slate-400' };
     return (
       <span className={`${current.class} flex items-center gap-1.5`}>
-        <span className={current.dot} />
+        <span className={`${current.dot} w-2 h-2 rounded-full`} />
         {current.label}
       </span>
     );
@@ -382,6 +529,7 @@ export default function VisitDetailPage() {
   const canEdit = profile?.role === 'admin' || profile?.role === 'reception' || profile?.role === 'director';
   const canManageInvoice = profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'director';
   const canManageFollowUp = profile?.role === 'admin' || profile?.role === 'service_manager' || profile?.role === 'director';
+  const canTreat = profile && ['admin', 'director', 'service_manager', 'collaborator', 'nurse'].includes(profile.role);
 
   if (loading) {
     return (
@@ -424,7 +572,13 @@ export default function VisitDetailPage() {
         </div>
 
         {/* Header Actions */}
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 no-print">
+          {invoice && (
+            <button onClick={() => window.print()} className="btn-secondary px-5">
+              <FileText className="w-4.5 h-4.5 mr-2" />
+              Imprimer Facture / Reçu
+            </button>
+          )}
           {visit.status === 'in_progress' && canEdit && (
             <button onClick={handleMarkDeparture} className="btn-success px-5">
               <CheckCircle className="w-4.5 h-4.5 mr-2" />
@@ -446,6 +600,154 @@ export default function VisitDetailPage() {
         {/* Main Details Columns (Left) */}
         <div className="lg:col-span-2 space-y-6">
           
+          {/* Prise en charge & Traitement Collaborateur */}
+          {canTreat && (visit.status === 'in_progress' || visit.status === 'en_cours') && (
+            <div className="card border-primary-100 dark:border-primary-950/40 bg-gradient-to-br from-white to-primary-50/10 dark:from-slate-900 dark:to-primary-950/5 no-print">
+              <div className="card-header flex items-center justify-between">
+                <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <User className="w-4.5 h-4.5 text-primary-600" />
+                  Prise en charge & Traitement
+                </h2>
+                {visit.assigned_collaborator && (
+                  <span className="badge bg-primary-100 text-primary-700 px-3 py-1 font-bold text-xs rounded-lg">
+                    Assignée à {(visit as any).assigned_collaborator?.full_name}
+                  </span>
+                )}
+              </div>
+              <div className="card-body space-y-4">
+                {!visit.assigned_collaborator_id ? (
+                  <div className="text-center py-4 space-y-3">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                      Cette visite est actuellement dans la file d'attente générale et n'est prise en charge par aucun collaborateur.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleTakeCharge}
+                      disabled={savingTreatment}
+                      className="btn-primary"
+                    >
+                      Prendre en charge cette visite
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Only the assigned collaborator or admin/director can edit details */}
+                    {(user?.id === visit.assigned_collaborator_id || profile?.role === 'admin' || profile?.role === 'director') ? (
+                      <form onSubmit={handleCloseVisit} className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4">
+                          <div>
+                            <label className="label">Observations en cours d'entretien</label>
+                            <textarea
+                              value={treatmentObservations}
+                              onChange={(e) => setTreatmentObservations(e.target.value)}
+                              placeholder="Saisissez des notes ou observations en temps réel..."
+                              className="input min-h-[80px]"
+                            />
+                            <div className="flex justify-end mt-1">
+                              <button
+                                type="button"
+                                onClick={handleSaveObservations}
+                                disabled={savingTreatment}
+                                className="text-xs text-primary-600 hover:underline font-bold"
+                              >
+                                Sauvegarder les observations
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="label">Compte rendu final (Obligatoire pour clôturer) *</label>
+                            <textarea
+                              value={treatmentReport}
+                              onChange={(e) => setTreatmentReport(e.target.value)}
+                              placeholder="Saisissez le compte rendu final de l'entretien..."
+                              className="input min-h-[100px]"
+                              required
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="label">Statut de clôture</label>
+                              <select
+                                value={closingStatus}
+                                onChange={(e) => setClosingStatus(e.target.value)}
+                                className="input"
+                                required
+                              >
+                                <option value="traite">Traité (Terminé avec succès)</option>
+                                <option value="a_relancer">À relancer (Action requise)</option>
+                                <option value="transforme">Transformé en opportunité commerciale</option>
+                                <option value="completed">Terminé simple</option>
+                              </select>
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <button
+                                type="submit"
+                                disabled={savingTreatment || !treatmentReport.trim()}
+                                className="btn-success flex-1 justify-center py-2.5 rounded-xl font-bold shadow-md shadow-emerald-500/10"
+                              >
+                                Clôturer la visite
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleReleaseCharge}
+                                disabled={savingTreatment}
+                                className="btn-secondary px-3 py-2.5 text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400"
+                                title="Abandonner la prise en charge"
+                              >
+                                Abandonner
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl text-center text-xs text-slate-500 font-medium">
+                        Cette visite est actuellement traitée par <strong>{(visit as any).assigned_collaborator?.full_name}</strong>. Seul ce collaborateur ou un administrateur peut modifier l'entretien.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Rapport final de traitement */}
+          {['completed', 'traite', 'a_relancer', 'transforme'].includes(visit.status) && (visit.report || visit.observations) && (
+            <div className="card border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/20">
+              <div className="card-header">
+                <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <CheckCircle className="w-4.5 h-4.5 text-emerald-600" />
+                  Rapport de Traitement
+                </h2>
+              </div>
+              <div className="card-body space-y-4">
+                {visit.assigned_collaborator && (
+                  <p className="text-xs font-semibold text-slate-400">
+                    Traité par : <strong className="text-slate-700 dark:text-slate-300">{(visit as any).assigned_collaborator.full_name}</strong> ({getRoleLabel((visit as any).assigned_collaborator.role)})
+                  </p>
+                )}
+                {visit.observations && (
+                  <div>
+                    <p className="label">Observations de l'entretien</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/50 dark:border-slate-800 leading-relaxed">
+                      {visit.observations}
+                    </p>
+                  </div>
+                )}
+                {visit.report && (
+                  <div>
+                    <p className="label">Compte rendu final</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 bg-emerald-50/30 dark:bg-emerald-950/10 p-3 rounded-xl border border-emerald-100/10 dark:border-emerald-950/30 leading-relaxed font-semibold">
+                      {visit.report}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Visit Information */}
           <div className="card">
             <div className="card-header">
@@ -1099,6 +1401,109 @@ export default function VisitDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Print only template */}
+      {invoice && (
+        <div className="print-only p-8 max-w-4xl mx-auto bg-white text-black font-sans">
+          <div className="flex justify-between items-start border-b-2 border-slate-300 pb-6 mb-6">
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-800">GICO SARL</h1>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Gestion & Intégration de Services Collaboratifs</p>
+              <p className="text-xs text-slate-400 mt-2">RCCM: BF-OUA-2026-B-1234 | IFU: 00123456X</p>
+              <p className="text-xs text-slate-400">Siège Social: Ouagadougou, Burkina Faso</p>
+              <p className="text-xs text-slate-400">Tél: +226 25 30 00 00 | Email: contact@gico.bf</p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                {invoice.payment_status === 'paid' ? 'Reçu de Paiement' : 'Facture de Prestation'}
+              </span>
+              <p className="text-sm font-mono font-bold mt-4 text-slate-700">Code: {visit.visit_code}</p>
+              <p className="text-xs text-slate-400 mt-1">Date: {format(new Date(invoice.invoice_date || invoice.created_at || Date.now()), 'dd/MM/yyyy', { locale: fr })}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-8 mb-8 text-xs">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-2">Facturé à</p>
+              <p className="text-sm font-bold text-slate-800">{visit.visitor?.first_name} {visit.visitor?.last_name}</p>
+              {visit.visitor?.company && <p className="font-semibold text-slate-500 mt-0.5">{visit.visitor.company}</p>}
+              {visit.visitor?.phone && <p className="text-slate-400 mt-2">Tél: {visit.visitor.phone}</p>}
+              {visit.visitor?.email && <p className="text-slate-400">Email: {visit.visitor.email}</p>}
+            </div>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-between">
+              <div>
+                <p className="font-bold text-slate-400 uppercase tracking-wider mb-2">Détails de visite</p>
+                <p className="font-semibold text-slate-700">Motif: {visit.purpose}</p>
+                <p className="font-semibold text-slate-700">Service de traitement: {visit.service?.name}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 mt-4">Arrivée: {format(new Date(visit.arrival_time), 'dd/MM/yyyy HH:mm', { locale: fr })}</p>
+                {visit.departure_time && <p className="text-[10px] text-slate-400">Départ: {format(new Date(visit.departure_time), 'dd/MM/yyyy HH:mm', { locale: fr })}</p>}
+              </div>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse text-xs mb-8">
+            <thead>
+              <tr className="border-b-2 border-slate-300 text-slate-400 uppercase tracking-wider font-bold">
+                <th className="py-3 pr-4">Description Prestation</th>
+                <th className="py-3 px-4 text-right">Prix Unitaire</th>
+                <th className="py-3 px-4 text-center">Quantité</th>
+                <th className="py-3 pl-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedItems.length > 0 ? (
+                selectedItems.map((si, idx) => (
+                  <tr key={idx} className="border-b border-slate-100 text-slate-700 font-medium">
+                    <td className="py-3 pr-4 font-bold">{si.item?.name || 'Prestation'}</td>
+                    <td className="py-3 px-4 text-right">{(si.item?.price || 0).toLocaleString('fr-FR')} XOF</td>
+                    <td className="py-3 px-4 text-center">{si.quantity}</td>
+                    <td className="py-3 pl-4 text-right font-bold">{((si.item?.price || 0) * si.quantity).toLocaleString('fr-FR')} XOF</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-b border-slate-100 text-slate-700 font-medium">
+                  <td className="py-3 pr-4 font-bold">Frais de Prestation Générale</td>
+                  <td className="py-3 px-4 text-right">{Number(invoice.amount).toLocaleString('fr-FR')} XOF</td>
+                  <td className="py-3 px-4 text-center">1</td>
+                  <td className="py-3 pl-4 text-right font-bold">{Number(invoice.amount).toLocaleString('fr-FR')} XOF</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          <div className="flex justify-end mb-12">
+            <div className="w-64 space-y-2.5 text-xs">
+              <div className="flex justify-between font-semibold text-slate-500">
+                <span>Montant Global:</span>
+                <span className="text-slate-800">{Number(invoice.amount).toLocaleString('fr-FR')} XOF</span>
+              </div>
+              <div className="flex justify-between font-semibold text-emerald-600">
+                <span>Montant Versé:</span>
+                <span>{Number(invoice.amount_paid).toLocaleString('fr-FR')} XOF</span>
+              </div>
+              <div className="h-px bg-slate-200" />
+              <div className="flex justify-between font-black text-sm text-slate-800">
+                <span>Reste à payer:</span>
+                <span className={Number(invoice.amount) - Number(invoice.amount_paid) > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+                  {Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid)).toLocaleString('fr-FR')} XOF
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-12 text-center text-xs mt-16">
+            <div className="border-t border-slate-300 pt-6">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">Le Client</p>
+              <p className="italic text-slate-300">Bon pour accord & signature</p>
+            </div>
+            <div className="border-t border-slate-300 pt-6">
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">La Caisse GICO</p>
+              <p className="italic text-slate-300">Cachet & Signature</p>
+            </div>
           </div>
         </div>
       )}

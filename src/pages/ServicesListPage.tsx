@@ -1,17 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { supabase, Service, Profile, Visit, ServiceItem } from '../lib/supabase';
+import { supabase, Service, Profile, ServiceItem } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import {
   Building2,
   Plus,
   Edit,
-  Users,
-  Calendar,
-  CheckCircle,
   AlertTriangle,
-  Clock,
   Settings,
   Search,
   X,

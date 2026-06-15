@@ -1,17 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase, Visitor } from '../lib/supabase';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Search,
-  Plus,
   User,
   Phone,
   Mail,
-  Building2,
   Calendar,
-  Eye,
-  Edit,
   Users,
 } from 'lucide-react';
 

@@ -12,6 +12,7 @@ import {
   Settings,
   Database,
   RefreshCw,
+  Building2,
 } from 'lucide-react';
 
 export default function SettingsPage() {

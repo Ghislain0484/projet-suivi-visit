@@ -144,6 +144,7 @@ export default function UsersListPage() {
       reception: 'Reception',
       service_manager: 'Responsable Service',
       accounting: 'Comptabilite',
+      cashier: 'Caissier / Caisse',
     };
     return labels[role] || role;
   };
@@ -155,6 +156,7 @@ export default function UsersListPage() {
       service_manager: 'bg-purple-100 text-purple-700',
       accounting: 'bg-gold-100 text-gold-700',
       reception: 'bg-gray-100 text-gray-700',
+      cashier: 'bg-emerald-100 text-emerald-700',
     };
     return colors[role] || colors.reception;
   };
@@ -220,6 +222,7 @@ export default function UsersListPage() {
             <option value="director">Directeur</option>
             <option value="service_manager">Responsable</option>
             <option value="accounting">Comptabilite</option>
+            <option value="cashier">Caissier / Caisse</option>
             <option value="reception">Reception</option>
           </select>
         </div>
@@ -349,6 +352,7 @@ export default function UsersListPage() {
                   <option value="director">Directeur General</option>
                   <option value="service_manager">Responsable Service</option>
                   <option value="accounting">Comptabilite</option>
+                  <option value="cashier">Caissier / Caisse</option>
                   <option value="reception">Reception</option>
                 </select>
               </div>

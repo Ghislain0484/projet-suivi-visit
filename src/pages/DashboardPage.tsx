@@ -589,33 +589,31 @@ export default function DashboardPage() {
                 <h3 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Répartition des Visiteurs</h3>
               </div>
               <div className="card-body flex flex-col sm:flex-row items-center justify-around gap-6">
-                <div className="relative w-48 h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={visitsByType}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={80}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {visitsByType.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} className="outline-none focus:outline-none" />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                          border: 'none',
-                          borderRadius: '16px',
-                          color: '#fff',
-                          fontSize: '11px',
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="relative w-48 h-48 flex items-center justify-center">
+                  <PieChart width={192} height={192}>
+                    <Pie
+                      data={visitsByType}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {visitsByType.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} className="outline-none focus:outline-none" />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        border: 'none',
+                        borderRadius: '16px',
+                        color: '#fff',
+                        fontSize: '11px',
+                      }}
+                    />
+                  </PieChart>
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                     <span className="text-2xl font-black text-slate-800 dark:text-white">{stats.monthVisits}</span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Ce mois</span>

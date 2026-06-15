@@ -385,7 +385,7 @@ export default function ReportsPage() {
                       outerRadius={80}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                     >
                       {reportData.visitsByType.map((entry, index) => (
                         <Cell key={index} fill={entry.color} />
@@ -433,7 +433,7 @@ export default function ReportsPage() {
                       outerRadius={70}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                     >
                       {reportData.invoiceStatus.map((_, index) => (
                         <Cell key={index} fill={COLORS[index % COLORS.length]} />
@@ -460,7 +460,7 @@ export default function ReportsPage() {
                       outerRadius={70}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                     >
                       {reportData.serviceStatus.map((_, index) => (
                         <Cell key={index} fill={COLORS[index % COLORS.length]} />

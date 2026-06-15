@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export default function InvoicesListPage() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,9 +36,16 @@ export default function InvoicesListPage() {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  
+  // Payment states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+
   const [stats, setStats] = useState({
     totalInvoiced: 0,
     totalPaid: 0,
+    totalRemaining: 0,
     pendingCount: 0,
     lateCount: 0,
   });
@@ -70,7 +77,11 @@ export default function InvoicesListPage() {
       .order('created_at', { ascending: false });
 
     // Apply filters
-    if (filters.payment_status) query = query.eq('payment_status', filters.payment_status);
+    if (filters.payment_status === 'unresolved') {
+      query = query.in('payment_status', ['invoiced', 'partially_paid']);
+    } else if (filters.payment_status) {
+      query = query.eq('payment_status', filters.payment_status);
+    }
     if (filters.service_status) query = query.eq('service_status', filters.service_status);
     if (filters.service_id) query = query.eq('responsible_service_id', filters.service_id);
     if (filters.is_billable) query = query.eq('is_billable', filters.is_billable === 'yes');
@@ -92,12 +103,13 @@ export default function InvoicesListPage() {
         .filter((inv) => inv.is_billable)
         .reduce((sum, inv) => sum + Number(inv.amount), 0);
       const totalPaid = data
-        .filter((inv) => inv.payment_status === 'paid')
-        .reduce((sum, inv) => sum + Number(inv.amount), 0);
+        .filter((inv) => inv.is_billable)
+        .reduce((sum, inv) => sum + Number(inv.amount_paid || 0), 0);
+      const totalRemaining = totalInvoiced - totalPaid;
       const pendingCount = data.filter((inv) => inv.service_status === 'pending').length;
       const lateCount = data.filter((inv) => ['late', 'blocked'].includes(inv.service_status)).length;
 
-      setStats({ totalInvoiced, totalPaid, pendingCount, lateCount });
+      setStats({ totalInvoiced, totalPaid, totalRemaining, pendingCount, lateCount });
     }
     setLoading(false);
   };
@@ -105,6 +117,49 @@ export default function InvoicesListPage() {
   const handleUpdateInvoice = async (invoiceId: string, updates: Partial<Invoice>) => {
     await supabase.from('invoices').update(updates).eq('id', invoiceId);
     setEditingInvoice(null);
+    fetchInvoices();
+  };
+
+  const handleRecordQuickPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvoiceForPayment || !user) return;
+
+    const invoice = selectedInvoiceForPayment;
+    const newPaid = Number(invoice.amount_paid || 0) + paymentAmount;
+    const isPaid = newPaid >= Number(invoice.amount);
+    const paymentStatus = isPaid ? 'paid' : (newPaid > 0 ? 'partially_paid' : 'invoiced');
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        amount_paid: newPaid,
+        payment_status: paymentStatus,
+        invoice_date: invoice.invoice_date || new Date().toISOString().split('T')[0],
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoice.id);
+
+    if (!error) {
+      // Log payment activity
+      await supabase.from('activity_logs').insert({
+        user_id: user.id,
+        action: 'RECORD_PAYMENT',
+        entity_type: 'invoice',
+        entity_id: invoice.id,
+        details: { amountPaid: paymentAmount, totalPaid: newPaid },
+      });
+      
+      // Auto-create a comment indicating the payment
+      await supabase.from('comments').insert({
+        visit_id: invoice.visit_id,
+        user_id: user.id,
+        content: `💳 Encaissement rapide enregistré : ${paymentAmount.toLocaleString('fr-FR')} XOF versés. Nouveau solde payé : ${newPaid.toLocaleString('fr-FR')} XOF / ${Number(invoice.amount).toLocaleString('fr-FR')} XOF.`,
+      });
+    }
+
+    setShowPaymentModal(false);
+    setSelectedInvoiceForPayment(null);
+    setPaymentAmount(0);
     fetchInvoices();
   };
 
@@ -144,14 +199,15 @@ export default function InvoicesListPage() {
   };
 
   const canEdit = profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'director';
+  const canRecordPayment = profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'cashier' || profile?.role === 'director';
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Module de Facturation</h1>
-          <p className="text-gray-500">Suivi des facturations et paiements</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Module de Facturation</h1>
+          <p className="text-gray-500">Suivi des facturations, encaissements et caisse</p>
         </div>
       </div>
 
@@ -160,9 +216,9 @@ export default function InvoicesListPage() {
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total facture</p>
+              <p className="text-sm text-gray-500">Total facturé</p>
               <p className="text-2xl font-bold text-gold-600">
-                {stats.totalInvoiced.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF' })}
+                {stats.totalInvoiced.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })}
               </p>
             </div>
             <div className="p-3 bg-gold-100 rounded-lg">
@@ -174,9 +230,9 @@ export default function InvoicesListPage() {
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total encaisse</p>
+              <p className="text-sm text-gray-500">Total encaissé</p>
               <p className="text-2xl font-bold text-emerald-600">
-                {stats.totalPaid.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF' })}
+                {stats.totalPaid.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })}
               </p>
             </div>
             <div className="p-3 bg-emerald-100 rounded-lg">
@@ -188,11 +244,13 @@ export default function InvoicesListPage() {
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">En attente</p>
-              <p className="text-2xl font-bold text-amber-600">{stats.pendingCount}</p>
+              <p className="text-sm text-gray-500">Reste à solder</p>
+              <p className="text-2xl font-bold text-amber-600">
+                {stats.totalRemaining.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })}
+              </p>
             </div>
             <div className="p-3 bg-amber-100 rounded-lg">
-              <Clock className="w-6 h-6 text-amber-700" />
+              <CreditCard className="w-6 h-6 text-amber-700" />
             </div>
           </div>
         </div>
@@ -200,8 +258,10 @@ export default function InvoicesListPage() {
         <div className="stat-card bg-red-50 border-red-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-red-600">En retard</p>
-              <p className="text-2xl font-bold text-red-700">{stats.lateCount}</p>
+              <p className="text-sm text-red-600">Prestations en retard / attente</p>
+              <p className="text-xl font-bold text-red-700">
+                {stats.lateCount} retards / {stats.pendingCount} attentes
+              </p>
             </div>
             <div className="p-3 bg-red-100 rounded-lg">
               <AlertTriangle className="w-6 h-6 text-red-600" />
@@ -234,7 +294,7 @@ export default function InvoicesListPage() {
           </div>
 
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg dark:bg-slate-900">
               <div>
                 <label className="label">Statut paiement</label>
                 <select
@@ -243,11 +303,12 @@ export default function InvoicesListPage() {
                   className="input"
                 >
                   <option value="">Tous</option>
-                  <option value="not_invoiced">Non facture</option>
-                  <option value="invoiced">Facture</option>
-                  <option value="paid">Paye</option>
-                  <option value="partially_paid">Part. paye</option>
-                  <option value="cancelled">Annule</option>
+                  <option value="unresolved">À solder (Facturé / Part. payé)</option>
+                  <option value="not_invoiced">Non facturé</option>
+                  <option value="invoiced">Facturé</option>
+                  <option value="paid">Payé</option>
+                  <option value="partially_paid">Part. payé</option>
+                  <option value="cancelled">Annulé</option>
                 </select>
               </div>
               <div>
@@ -260,8 +321,8 @@ export default function InvoicesListPage() {
                   <option value="">Tous</option>
                   <option value="pending">En attente</option>
                   <option value="in_progress">En cours</option>
-                  <option value="completed">Termine</option>
-                  <option value="blocked">Bloque</option>
+                  <option value="completed">Terminé</option>
+                  <option value="blocked">Bloqué</option>
                   <option value="late">En retard</option>
                 </select>
               </div>
@@ -305,8 +366,8 @@ export default function InvoicesListPage() {
       ) : invoices.length === 0 ? (
         <div className="card p-12 text-center">
           <CreditCard className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune facturation trouvee</h3>
-          <p className="text-gray-500">Les facturations sont creees depuis les details des visites</p>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune facturation trouvée</h3>
+          <p className="text-gray-500 font-medium text-sm">Les facturations sont créées depuis les détails des visites</p>
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -316,83 +377,111 @@ export default function InvoicesListPage() {
                 <tr>
                   <th>Visite</th>
                   <th>Visiteur</th>
-                  <th>Montant</th>
+                  <th>Total Facturé</th>
+                  <th>Encaissé</th>
+                  <th>Reste</th>
                   <th>Statut paiement</th>
                   <th>Statut service</th>
                   <th>Service</th>
-                  <th>Delai</th>
+                  <th>Délai</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>
-                      <Link
-                        to={`/visits/${invoice.visit_id}`}
-                        className="text-primary-700 hover:underline font-mono text-sm"
-                      >
-                        {(invoice as any).visit?.visit_code || 'N/A'}
-                      </Link>
-                    </td>
-                    <td>
-                      <div>
-                        <p className="font-medium">
-                          {(invoice as any).visit?.visitor?.first_name} {(invoice as any).visit?.visitor?.last_name}
-                        </p>
-                        {(invoice as any).visit?.visitor?.company && (
-                          <p className="text-xs text-gray-500">{(invoice as any).visit?.visitor?.company}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="font-medium">
-                      {invoice.is_billable
-                        ? Number(invoice.amount).toLocaleString('fr-FR', { style: 'currency', currency: 'XOF' })
-                        : '-'}
-                    </td>
-                    <td>{getPaymentStatusBadge(invoice.payment_status)}</td>
-                    <td>{getServiceStatusBadge(invoice.service_status)}</td>
-                    <td>{(invoice as any).responsible_service?.name || '-'}</td>
-                    <td>
-                      {invoice.deadline ? (
-                        <div className="flex items-center gap-1">
-                          <span
-                            className={`text-sm ${
-                              new Date(invoice.deadline) < new Date() ? 'text-red-600' : 'text-gray-600'
-                            }`}
-                          >
-                            {format(new Date(invoice.deadline), 'dd/MM/yyyy')}
-                          </span>
-                          {new Date(invoice.deadline) < new Date() && (
-                            <AlertTriangle className="w-4 h-4 text-red-500" />
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
+                {invoices.map((invoice) => {
+                  const remaining = Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid || 0));
+                  return (
+                    <tr key={invoice.id}>
+                      <td>
                         <Link
                           to={`/visits/${invoice.visit_id}`}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Voir visite"
+                          className="text-primary-700 hover:underline font-mono text-sm"
                         >
-                          <Eye className="w-4 h-4 text-gray-600" />
+                          {(invoice as any).visit?.visit_code || 'N/A'}
                         </Link>
-                        {canEdit && (
-                          <button
-                            onClick={() => setEditingInvoice(invoice)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="Modifier"
-                          >
-                            <Edit className="w-4 h-4 text-gray-600" />
-                          </button>
+                      </td>
+                      <td>
+                        <div>
+                          <p className="font-medium text-slate-800 dark:text-white">
+                            {(invoice as any).visit?.visitor?.first_name} {(invoice as any).visit?.visitor?.last_name}
+                          </p>
+                          {(invoice as any).visit?.visitor?.company && (
+                            <p className="text-xs text-gray-500">{(invoice as any).visit?.visitor?.company}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="font-medium">
+                        {invoice.is_billable
+                          ? Number(invoice.amount).toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })
+                          : '-'}
+                      </td>
+                      <td className="font-medium text-emerald-600">
+                        {invoice.is_billable
+                          ? Number(invoice.amount_paid || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })
+                          : '-'}
+                      </td>
+                      <td className={`font-medium ${remaining > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {invoice.is_billable
+                          ? remaining.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })
+                          : '-'}
+                      </td>
+                      <td>{getPaymentStatusBadge(invoice.payment_status)}</td>
+                      <td>{getServiceStatusBadge(invoice.service_status)}</td>
+                      <td>{(invoice as any).responsible_service?.name || '-'}</td>
+                      <td>
+                        {invoice.deadline ? (
+                          <div className="flex items-center gap-1">
+                            <span
+                              className={`text-sm ${
+                                new Date(invoice.deadline) < new Date() ? 'text-red-600' : 'text-gray-600'
+                              }`}
+                            >
+                              {format(new Date(invoice.deadline), 'dd/MM/yyyy')}
+                            </span>
+                            {new Date(invoice.deadline) < new Date() && (
+                              <AlertTriangle className="w-4 h-4 text-red-500" />
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/visits/${invoice.visit_id}`}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Voir visite"
+                          >
+                            <Eye className="w-4 h-4 text-gray-600" />
+                          </Link>
+                          {invoice.is_billable && invoice.payment_status !== 'paid' && canRecordPayment && (
+                            <button
+                              onClick={() => {
+                                setSelectedInvoiceForPayment(invoice);
+                                setPaymentAmount(remaining);
+                                setShowPaymentModal(true);
+                              }}
+                              className="p-2 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600"
+                              title="Encaisser règlement"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
+                              onClick={() => setEditingInvoice(invoice)}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit className="w-4 h-4 text-gray-600" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -403,10 +492,10 @@ export default function InvoicesListPage() {
       {editingInvoice && (
         <div className="modal-backdrop" onClick={() => setEditingInvoice(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Modifier la facturation</h3>
-              <button onClick={() => setEditingInvoice(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
+            <div className="p-6 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Modifier la facturation</h3>
+              <button onClick={() => setEditingInvoice(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             <form
@@ -440,11 +529,11 @@ export default function InvoicesListPage() {
                   defaultValue={editingInvoice.payment_status}
                   className="input"
                 >
-                  <option value="not_invoiced">Non facture</option>
-                  <option value="invoiced">Facture</option>
-                  <option value="paid">Paye</option>
-                  <option value="partially_paid">Partiellement paye</option>
-                  <option value="cancelled">Annule</option>
+                  <option value="not_invoiced">Non facturé</option>
+                  <option value="invoiced">Facturé</option>
+                  <option value="paid">Payé</option>
+                  <option value="partially_paid">Partiellement payé</option>
+                  <option value="cancelled">Annulé</option>
                 </select>
               </div>
 
@@ -457,8 +546,8 @@ export default function InvoicesListPage() {
                 >
                   <option value="pending">En attente</option>
                   <option value="in_progress">En cours</option>
-                  <option value="completed">Termine</option>
-                  <option value="blocked">Bloque</option>
+                  <option value="completed">Terminé</option>
+                  <option value="blocked">Bloqué</option>
                   <option value="late">En retard</option>
                 </select>
               </div>
@@ -470,6 +559,83 @@ export default function InvoicesListPage() {
                 <button type="submit" className="btn-primary">
                   <Save className="w-4 h-4 mr-2" />
                   Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Payment Modal */}
+      {showPaymentModal && selectedInvoiceForPayment && (
+        <div className="modal-backdrop" onClick={() => { setShowPaymentModal(false); setSelectedInvoiceForPayment(null); }}>
+          <div className="modal max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-600" />
+                Enregistrer un règlement
+              </h3>
+              <button 
+                onClick={() => { setShowPaymentModal(false); setSelectedInvoiceForPayment(null); }} 
+                className="p-1.5 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-500 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleRecordQuickPayment} className="p-6 space-y-4">
+              <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-2.5">
+                <div className="flex justify-between text-xs font-semibold text-slate-400">
+                  <span>Facture Code</span>
+                  <span className="font-mono text-slate-700 dark:text-slate-300">{(selectedInvoiceForPayment as any).visit?.visit_code || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold text-slate-400">
+                  <span>Visiteur</span>
+                  <span className="text-slate-800 dark:text-white font-bold">
+                    {(selectedInvoiceForPayment as any).visit?.visitor?.first_name} {(selectedInvoiceForPayment as any).visit?.visitor?.last_name}
+                  </span>
+                </div>
+                <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-1" />
+                <div className="flex justify-between text-xs font-semibold text-slate-400">
+                  <span>Montant Total</span>
+                  <span className="text-slate-800 dark:text-white font-extrabold">{Number(selectedInvoiceForPayment.amount).toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold text-slate-400">
+                  <span>Déjà réglé</span>
+                  <span className="text-emerald-600 font-extrabold">{Number(selectedInvoiceForPayment.amount_paid || 0).toLocaleString('fr-FR')} XOF</span>
+                </div>
+                <div className="flex justify-between text-xs font-semibold text-slate-400">
+                  <span>Solde restant</span>
+                  <span className="text-rose-600 font-extrabold">
+                    {Math.max(0, Number(selectedInvoiceForPayment.amount) - Number(selectedInvoiceForPayment.amount_paid || 0)).toLocaleString('fr-FR')} XOF
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Montant du versement (XOF)</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max={Math.max(0, Number(selectedInvoiceForPayment.amount) - Number(selectedInvoiceForPayment.amount_paid || 0))}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  placeholder="Entrez le montant versé..."
+                  className="input"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button 
+                  type="button" 
+                  onClick={() => { setShowPaymentModal(false); setSelectedInvoiceForPayment(null); }} 
+                  className="btn-secondary text-xs"
+                >
+                  Annuler
+                </button>
+                <button type="submit" className="btn-success text-xs">
+                  Valider le règlement
                 </button>
               </div>
             </form>

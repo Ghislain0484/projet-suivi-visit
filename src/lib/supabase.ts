@@ -17,7 +17,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting';
+export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier';
 
 export type VisitorType = 'client' | 'prospect' | 'supplier' | 'partner' | 'other';
 
@@ -38,6 +38,16 @@ export interface Service {
   name: string;
   description: string | null;
   manager_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  service_id: string;
+  name: string;
+  price: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -92,6 +102,7 @@ export interface Invoice {
   visit_id: string;
   is_billable: boolean;
   amount: number;
+  amount_paid: number;
   invoice_date: string | null;
   payment_status: PaymentStatus;
   service_status: ServiceStatus;
@@ -101,6 +112,18 @@ export interface Invoice {
   created_at: string;
   updated_at: string;
   visit?: Visit;
+}
+
+export interface InvoiceItem {
+  id: string;
+  invoice_id: string;
+  service_item_id: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  created_at: string;
+  updated_at: string;
+  service_item?: ServiceItem;
 }
 
 export interface VisitFollowUp {

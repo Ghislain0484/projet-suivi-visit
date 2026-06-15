@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service } from '../lib/supabase';
+import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem, InvoiceItem } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -22,6 +22,7 @@ import {
   Plus,
   ArrowUpRight,
   ShieldAlert,
+  Trash2,
 } from 'lucide-react';
 
 export default function VisitDetailPage() {
@@ -37,6 +38,12 @@ export default function VisitDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+
+  // Billing and Payment states
+  const [catalogItems, setCatalogItems] = useState<ServiceItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<{ item: ServiceItem; quantity: number }[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState(0);
 
   const [invoiceForm, setInvoiceForm] = useState({
     is_billable: false,
@@ -56,6 +63,21 @@ export default function VisitDetailPage() {
     fetchVisit();
     fetchServices();
   }, [id]);
+
+  useEffect(() => {
+    const fetchCatalog = async () => {
+      if (showInvoiceForm && visit?.service_id) {
+        const { data } = await supabase
+          .from('service_items')
+          .select('*')
+          .eq('service_id', visit.service_id)
+          .eq('is_active', true)
+          .order('name');
+        if (data) setCatalogItems(data);
+      }
+    };
+    fetchCatalog();
+  }, [showInvoiceForm, visit?.service_id]);
 
   const fetchVisit = async () => {
     setLoading(true);
@@ -80,13 +102,42 @@ export default function VisitDetailPage() {
         .select('*')
         .eq('visit_id', id)
         .single();
-      if (invoiceData) setInvoice(invoiceData);
+      
+      if (invoiceData) {
+        setInvoice(invoiceData);
+        setInvoiceForm({
+          is_billable: invoiceData.is_billable,
+          amount: Number(invoiceData.amount),
+          expected_duration_days: invoiceData.expected_duration_days || 7,
+          responsible_service_id: invoiceData.responsible_service_id || '',
+        });
+
+        // Fetch invoice items
+        const { data: invItems } = await supabase
+          .from('invoice_items')
+          .select(`*, service_item:service_items(*)`)
+          .eq('invoice_id', invoiceData.id);
+        
+        if (invItems) {
+          const formatted = invItems
+            .filter((ii: any) => ii.service_item !== null)
+            .map((ii: any) => ({
+              item: ii.service_item,
+              quantity: ii.quantity
+            }));
+          setSelectedItems(formatted);
+        }
+      } else {
+        setInvoice(null);
+        setSelectedItems([]);
+      }
 
       // Fetch follow-ups
       const { data: followUpsData } = await supabase
         .from('visit_followups')
         .select('*')
-        .eq('visit_id', id);
+        .eq('visit_id', id)
+        .order('created_at', { ascending: false });
       if (followUpsData) setFollowUps(followUpsData);
 
       // Fetch comments
@@ -132,18 +183,125 @@ export default function VisitDetailPage() {
     e.preventDefault();
     if (!visit) return;
 
-    await supabase.from('invoices').insert({
+    // Calculate total amount from selected items if billable
+    const totalAmount = invoiceForm.is_billable
+      ? selectedItems.reduce((sum, current) => sum + current.item.price * current.quantity, 0)
+      : 0;
+
+    let invoiceId = invoice?.id;
+
+    const invoiceData = {
       visit_id: visit.id,
       is_billable: invoiceForm.is_billable,
-      amount: invoiceForm.amount,
+      amount: totalAmount,
       expected_duration_days: invoiceForm.expected_duration_days,
       responsible_service_id: invoiceForm.responsible_service_id || null,
       deadline: invoiceForm.responsible_service_id
         ? new Date(Date.now() + invoiceForm.expected_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         : null,
+    };
+
+    if (invoiceId) {
+      // Update existing invoice
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          ...invoiceData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', invoiceId);
+      
+      if (updateError) {
+        console.error(updateError);
+        return;
+      }
+      
+      // Delete old invoice items
+      await supabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
+    } else {
+      // Insert new invoice
+      const { data: newInv, error: insertError } = await supabase
+        .from('invoices')
+        .insert({
+          ...invoiceData,
+          amount_paid: 0,
+          payment_status: 'not_invoiced',
+          service_status: 'pending',
+        })
+        .select()
+        .single();
+      
+      if (insertError) {
+        console.error(insertError);
+        return;
+      }
+      invoiceId = newInv.id;
+    }
+
+    // Insert invoice items if billable
+    if (invoiceForm.is_billable && selectedItems.length > 0) {
+      const itemsToInsert = selectedItems.map((si) => ({
+        invoice_id: invoiceId,
+        service_item_id: si.item.id,
+        quantity: si.quantity,
+        unit_price: si.item.price,
+        total_price: si.item.price * si.quantity,
+      }));
+
+      await supabase.from('invoice_items').insert(itemsToInsert);
+    }
+
+    // Log activity
+    await supabase.from('activity_logs').insert({
+      user_id: user?.id,
+      action: invoice ? 'UPDATE_INVOICE' : 'CREATE_INVOICE',
+      entity_type: 'invoice',
+      entity_id: invoiceId,
+      details: { amount: totalAmount },
     });
 
     setShowInvoiceForm(false);
+    fetchVisit();
+  };
+
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoice || !user) return;
+
+    const newPaid = Number(invoice.amount_paid) + paymentAmount;
+    const isPaid = newPaid >= Number(invoice.amount);
+    const paymentStatus = isPaid ? 'paid' : (newPaid > 0 ? 'partially_paid' : 'invoiced');
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        amount_paid: newPaid,
+        payment_status: paymentStatus,
+        invoice_date: invoice.invoice_date || new Date().toISOString().split('T')[0],
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoice.id);
+
+    if (!error) {
+      // Log payment activity
+      await supabase.from('activity_logs').insert({
+        user_id: user.id,
+        action: 'RECORD_PAYMENT',
+        entity_type: 'invoice',
+        entity_id: invoice.id,
+        details: { amountPaid: paymentAmount, totalPaid: newPaid },
+      });
+      
+      // Auto-create a comment indicating the payment
+      await supabase.from('comments').insert({
+        visit_id: id,
+        user_id: user.id,
+        content: `💳 Encaissement enregistré : ${paymentAmount.toLocaleString('fr-FR')} XOF versés. Nouveau solde payé : ${newPaid.toLocaleString('fr-FR')} XOF / ${Number(invoice.amount).toLocaleString('fr-FR')} XOF.`,
+      });
+    }
+
+    setShowPaymentModal(false);
+    setPaymentAmount(0);
     fetchVisit();
   };
 
@@ -370,41 +528,75 @@ export default function VisitDetailPage() {
             </div>
             <div className="card-body">
               {invoice ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  
-                  <div>
-                    <p className="label">Assujetti à facturation</p>
-                    <p className="font-bold text-slate-800 dark:text-white text-sm">
-                      {invoice.is_billable ? (
-                        <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-lg border border-amber-100/10">Oui</span>
-                      ) : (
-                        <span className="text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg">Non (Gratuit)</span>
-                      )}
-                    </p>
-                  </div>
-
-                  {invoice.is_billable && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <p className="label">Montant global</p>
-                      <p className="text-lg font-black text-primary-600 dark:text-primary-400">
-                        {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(invoice.amount)}
+                      <p className="label">Assujetti à facturation</p>
+                      <p className="font-bold text-slate-800 dark:text-white text-sm">
+                        {invoice.is_billable ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-lg border border-amber-100/10">Oui</span>
+                        ) : (
+                          <span className="text-slate-500 dark:text-slate-400 font-bold bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg">Non (Gratuit)</span>
+                        )}
                       </p>
                     </div>
-                  )}
 
-                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 sm:col-span-2 grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="label">Statut du paiement</p>
-                      {getPaymentStatusBadge(invoice.payment_status)}
-                    </div>
                     <div>
                       <p className="label">Statut de réalisation</p>
                       {getServiceStatusBadge(invoice.service_status)}
                     </div>
                   </div>
 
+                  {invoice.is_billable && (
+                    <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                      <div>
+                        <p className="label">Montant global</p>
+                        <p className="text-sm font-extrabold text-slate-800 dark:text-white">
+                          {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(invoice.amount)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="label">Montant versé</p>
+                        <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(invoice.amount_paid)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="label">Reste à solder</p>
+                        <p className={`text-sm font-extrabold ${Number(invoice.amount) - Number(invoice.amount_paid) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid)))}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {invoice.is_billable && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                      <p className="label">Statut du paiement</p>
+                      <div className="mt-1">{getPaymentStatusBadge(invoice.payment_status)}</div>
+                    </div>
+                  )}
+
+                  {selectedItems.length > 0 && invoice.is_billable && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                      <p className="label mb-2">Prestations détaillées</p>
+                      <div className="space-y-2">
+                        {selectedItems.map((si, idx) => (
+                          <div key={idx} className="flex justify-between text-xs bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">
+                              {si.item?.name || 'Prestation'} <span className="text-slate-400">x{si.quantity}</span>
+                            </span>
+                            <span className="font-bold text-slate-800 dark:text-white">
+                              {((si.item?.price || 0) * si.quantity).toLocaleString('fr-FR')} XOF
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {invoice.deadline && (
-                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 sm:col-span-2 grid grid-cols-2 gap-4">
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-2 gap-4">
                       <div>
                         <p className="label">Date d'échéance</p>
                         <p className="font-semibold text-slate-800 dark:text-white text-sm">
@@ -425,6 +617,19 @@ export default function VisitDetailPage() {
                         </p>
                       </div>
                     </div>
+                  )}
+
+                  {invoice.is_billable && invoice.payment_status !== 'paid' && (profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'cashier' || profile?.role === 'director') && (
+                    <button
+                      onClick={() => {
+                        setPaymentAmount(Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid)));
+                        setShowPaymentModal(true);
+                      }}
+                      className="btn-success w-full text-xs justify-center py-2.5 rounded-xl mt-4 shadow-md shadow-emerald-500/10"
+                    >
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Enregistrer un règlement
+                    </button>
                   )}
 
                 </div>
@@ -452,8 +657,33 @@ export default function VisitDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {followUps.map((fu) => (
                     <div key={fu.id} className="p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 flex flex-col justify-between">
-                      <div className="flex items-center justify-between mb-3">
-                        {getServiceStatusBadge(fu.status)}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        {canManageFollowUp ? (
+                          <select
+                            value={fu.status}
+                            onChange={async (e) => {
+                              const nextStatus = e.target.value;
+                              await supabase
+                                .from('visit_followups')
+                                .update({
+                                  status: nextStatus,
+                                  completed_at: nextStatus === 'completed' ? new Date().toISOString() : null,
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('id', fu.id);
+                              fetchVisit();
+                            }}
+                            className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 outline-none font-semibold text-slate-700 dark:text-slate-300"
+                          >
+                            <option value="pending">En attente</option>
+                            <option value="in_progress">En cours</option>
+                            <option value="completed">Terminé</option>
+                            <option value="blocked">Bloqué</option>
+                            <option value="late">En retard</option>
+                          </select>
+                        ) : (
+                          getServiceStatusBadge(fu.status)
+                        )}
                         {getPriorityBadge(fu.priority)}
                       </div>
                       {fu.due_date && (
@@ -630,18 +860,92 @@ export default function VisitDetailPage() {
 
               {invoiceForm.is_billable && (
                 <>
-                  <div>
-                    <label className="label">Montant global (XOF)</label>
-                    <input
-                      type="number"
-                      value={invoiceForm.amount}
-                      onChange={(e) => setInvoiceForm((p) => ({ ...p, amount: Number(e.target.value) }))}
-                      className="input"
-                      min="0"
-                      step="100"
-                      required
-                    />
+                  <div className="p-4 bg-slate-50/70 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-4">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Choix des prestations</p>
+                    
+                    <div>
+                      <label className="label">Sélectionner un élément du catalogue</label>
+                      <select
+                        onChange={(e) => {
+                          const itemId = e.target.value;
+                          if (!itemId) return;
+                          const selectedItem = catalogItems.find(item => item.id === itemId);
+                          if (selectedItem) {
+                            const existing = selectedItems.find(si => si.item.id === itemId);
+                            if (existing) {
+                              setSelectedItems(selectedItems.map(si => si.item.id === itemId ? { ...si, quantity: si.quantity + 1 } : si));
+                            } else {
+                              setSelectedItems([...selectedItems, { item: selectedItem, quantity: 1 }]);
+                            }
+                          }
+                          e.target.value = '';
+                        }}
+                        className="input bg-white dark:bg-slate-900"
+                      >
+                        <option value="">Sélectionnez un élément à ajouter...</option>
+                        {catalogItems.map(item => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} ({item.price.toLocaleString('fr-FR')} XOF)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedItems.length > 0 ? (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                        {selectedItems.map((si, idx) => (
+                          <div key={idx} className="flex items-center justify-between gap-4 p-2.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{si.item.name}</p>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mt-0.5">{si.item.price.toLocaleString('fr-FR')} XOF / u</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (si.quantity > 1) {
+                                    setSelectedItems(selectedItems.map((s, i) => i === idx ? { ...s, quantity: s.quantity - 1 } : s));
+                                  }
+                                }}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500"
+                              >
+                                -
+                              </button>
+                              <span className="text-xs font-bold text-slate-800 dark:text-white w-6 text-center">{si.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedItems(selectedItems.map((s, i) => i === idx ? { ...s, quantity: s.quantity + 1 } : s));
+                                }}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500"
+                              >
+                                +
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedItems(selectedItems.filter((_, i) => i !== idx));
+                                }}
+                                className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-rose-500 rounded ml-1"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center py-4 text-xs text-slate-400 dark:text-slate-500">Votre panier est vide. Sélectionnez un élément ci-dessus.</p>
+                    )}
+
+                    <div className="pt-3 border-t border-slate-200/40 dark:border-slate-800/40 flex justify-between items-center text-xs font-bold">
+                      <span className="text-slate-500 uppercase">Total calculé :</span>
+                      <span className="text-sm font-black text-primary-600 dark:text-primary-400">
+                        {selectedItems.reduce((sum, current) => sum + current.item.price * current.quantity, 0).toLocaleString('fr-FR')} XOF
+                      </span>
+                    </div>
                   </div>
+
                   <div>
                     <label className="label">Échéance de réalisation (Jours)</label>
                     <input
@@ -741,6 +1045,57 @@ export default function VisitDetailPage() {
                 </button>
                 <button type="submit" className="btn-primary px-6 py-2.5">
                   Créer le suivi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Record Payment Form */}
+      {showPaymentModal && invoice && (
+        <div className="modal-backdrop" onClick={() => setShowPaymentModal(false)}>
+          <div className="modal animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Enregistrer un versement</h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Saisie d'encaissement pour la caisse</p>
+              </div>
+              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+            </div>
+            
+            <form onSubmit={handleRecordPayment} className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-800/80 text-xs font-bold">
+                <div>
+                  <p className="text-slate-400 uppercase">Montant global :</p>
+                  <p className="text-slate-800 dark:text-white mt-1">{Number(invoice.amount).toLocaleString('fr-FR')} XOF</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 uppercase">Reste à solder :</p>
+                  <p className="text-rose-600 dark:text-rose-400 mt-1">{(Number(invoice.amount) - Number(invoice.amount_paid)).toLocaleString('fr-FR')} XOF</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Montant du versement (XOF) *</label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  className="input"
+                  min="100"
+                  max={Number(invoice.amount) - Number(invoice.amount_paid)}
+                  step="100"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-secondary px-5 py-2.5">
+                  Annuler
+                </button>
+                <button type="submit" className="btn-primary px-6 py-2.5">
+                  Confirmer l'encaissement
                 </button>
               </div>
             </form>

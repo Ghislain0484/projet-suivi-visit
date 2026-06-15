@@ -153,7 +153,7 @@ export default function VisitFormPage() {
         visitorId = newVisitor.id;
       } else {
         // Update existing visitor
-        await supabase
+        const { error: updateVisitorError } = await supabase
           .from('visitors')
           .update({
             first_name: formData.first_name,
@@ -166,6 +166,8 @@ export default function VisitFormPage() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', visitorId);
+        
+        if (updateVisitorError) throw new Error(updateVisitorError.message);
       }
 
       // Create or update visit

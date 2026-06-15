@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase, Service, Profile, Visit } from '../lib/supabase';
+import { supabase, Service, Profile, Visit, ServiceItem } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -37,10 +37,76 @@ export default function ServicesListPage() {
     is_active: true,
   });
 
+  // Service catalog items states
+  const [selectedServiceForItems, setSelectedServiceForItems] = useState<Service | null>(null);
+  const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [editingItem, setEditingItem] = useState<ServiceItem | null>(null);
+  const [itemForm, setItemForm] = useState({ name: '', price: 0 });
+
   useEffect(() => {
     fetchServices();
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    if (selectedServiceForItems) {
+      fetchServiceItems(selectedServiceForItems.id);
+    }
+  }, [selectedServiceForItems]);
+
+  const fetchServiceItems = async (serviceId: string) => {
+    setItemsLoading(true);
+    const { data, error } = await supabase
+      .from('service_items')
+      .select('*')
+      .eq('service_id', serviceId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+    if (!error && data) {
+      setServiceItems(data);
+    }
+    setItemsLoading(false);
+  };
+
+  const handleItemSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedServiceForItems) return;
+
+    if (editingItem) {
+      await supabase
+        .from('service_items')
+        .update({
+          name: itemForm.name,
+          price: itemForm.price,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editingItem.id);
+    } else {
+      await supabase.from('service_items').insert({
+        service_id: selectedServiceForItems.id,
+        name: itemForm.name,
+        price: itemForm.price,
+      });
+    }
+
+    setShowItemForm(false);
+    setEditingItem(null);
+    setItemForm({ name: '', price: 0 });
+    fetchServiceItems(selectedServiceForItems.id);
+  };
+
+  const handleItemDelete = async (itemId: string) => {
+    if (!selectedServiceForItems) return;
+    if (window.confirm('Voulez-vous vraiment désactiver cet élément de tarification ?')) {
+      await supabase
+        .from('service_items')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('id', itemId);
+      fetchServiceItems(selectedServiceForItems.id);
+    }
+  };
 
   const fetchServices = async () => {
     setLoading(true);
@@ -200,14 +266,24 @@ export default function ServicesListPage() {
                         </span>
                       </div>
                     </div>
-                    {canManage && (
+                    <div className="flex items-center gap-1">
                       <button
-                        onClick={() => openEditForm(service)}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        onClick={() => setSelectedServiceForItems(service)}
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-primary-600 dark:text-primary-400 hover:text-primary-700 transition-colors"
+                        title="Catalogue des tarifs"
                       >
-                        <Edit className="w-4 h-4 text-gray-600" />
+                        <Settings className="w-4 h-4" />
                       </button>
-                    )}
+                      {canManage && (
+                        <button
+                          onClick={() => openEditForm(service)}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="Modifier le service"
+                        >
+                          <Edit className="w-4 h-4 text-gray-600" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {service.description && (
@@ -341,6 +417,133 @@ export default function ServicesListPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Service Items Catalog Modal */}
+      {selectedServiceForItems && (
+        <div className="modal-backdrop" onClick={() => setSelectedServiceForItems(null)}>
+          <div className="modal max-w-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Catalogue des tarifs : {selectedServiceForItems.name}</h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Prestations facturables et prix de base pour ce service</p>
+              </div>
+              <button onClick={() => setSelectedServiceForItems(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Form to Add / Edit Service Item */}
+              {showItemForm ? (
+                <form onSubmit={handleItemSubmit} className="p-4 bg-slate-50 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-4">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                    {editingItem ? 'Modifier la prestation' : 'Ajouter une prestation'}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Nom de la prestation *</label>
+                      <input
+                        type="text"
+                        value={itemForm.name}
+                        onChange={(e) => setItemForm((p) => ({ ...p, name: e.target.value }))}
+                        className="input"
+                        placeholder="Ex: Copie certifiée conforme"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Prix de base (XOF) *</label>
+                      <input
+                        type="number"
+                        value={itemForm.price}
+                        onChange={(e) => setItemForm((p) => ({ ...p, price: Number(e.target.value) }))}
+                        className="input"
+                        min="0"
+                        step="100"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowItemForm(false);
+                        setEditingItem(null);
+                        setItemForm({ name: '', price: 0 });
+                      }}
+                      className="btn-secondary px-3 py-1.5 text-xs rounded-lg"
+                    >
+                      Annuler
+                    </button>
+                    <button type="submit" className="btn-primary px-4 py-1.5 text-xs rounded-lg">
+                      Enregistrer
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                canManage && (
+                  <button
+                    onClick={() => {
+                      setEditingItem(null);
+                      setItemForm({ name: '', price: 0 });
+                      setShowItemForm(true);
+                    }}
+                    className="btn-primary w-full text-xs justify-center py-2.5 rounded-xl shadow-md shadow-primary-500/10"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Ajouter une prestation au catalogue
+                  </button>
+                )
+              )}
+
+              {/* Items List */}
+              {itemsLoading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+                </div>
+              ) : serviceItems.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 dark:text-slate-600">Aucun tarif défini pour ce service.</div>
+              ) : (
+                <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+                  {serviceItems.map((item) => (
+                    <div key={item.id} className="p-4 flex items-center justify-between bg-slate-50/20 dark:bg-slate-900/10">
+                      <div>
+                        <p className="font-bold text-sm text-slate-800 dark:text-white">{item.name}</p>
+                        <p className="text-xs text-primary-600 dark:text-primary-400 font-black mt-0.5">
+                          {item.price.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                      {canManage && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setEditingItem(item);
+                              setItemForm({ name: item.name, price: item.price });
+                              setShowItemForm(true);
+                            }}
+                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleItemDelete(item.id)}
+                            className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Désactiver"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

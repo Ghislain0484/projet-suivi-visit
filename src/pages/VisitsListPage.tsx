@@ -56,7 +56,7 @@ export default function VisitsListPage() {
       .select(
         `
         *,
-        visitor:visitors(*),
+        visitor:visitors!inner(*),
         service:services(*)
       `,
         { count: 'exact' }
@@ -66,14 +66,14 @@ export default function VisitsListPage() {
     // Apply filters
     if (filters.status) query = query.eq('status', filters.status);
     if (filters.service) query = query.eq('service_id', filters.service);
-    if (filters.visitorType) query = query.eq('visitors.visitor_type', filters.visitorType);
+    if (filters.visitorType) query = query.eq('visitor.visitor_type', filters.visitorType);
     if (filters.hasAppointment) query = query.eq('has_appointment', filters.hasAppointment === 'yes');
     if (filters.dateFrom) query = query.gte('arrival_time', filters.dateFrom);
     if (filters.dateTo) query = query.lte('arrival_time', filters.dateTo);
 
     // Apply search
     if (searchQuery) {
-      query = query.or(`visit_code.ilike.%${searchQuery}%,purpose.ilike.%${searchQuery}%`);
+      query = query.or(`visit_code.ilike.%${searchQuery}%,purpose.ilike.%${searchQuery}%,visitor.first_name.ilike.%${searchQuery}%,visitor.last_name.ilike.%${searchQuery}%,visitor.company.ilike.%${searchQuery}%`);
     }
 
     query = query.range(
@@ -83,12 +83,10 @@ export default function VisitsListPage() {
 
     const { data, error, count } = await query;
     if (!error && data) {
-      // Filter by visitor type client-side due to join
-      const filtered = filters.visitorType
-        ? data.filter((v: any) => v.visitor?.visitor_type === filters.visitorType)
-        : data;
-      setVisits(filtered);
+      setVisits(data);
       setPagination((p) => ({ ...p, total: count || 0 }));
+    } else if (error) {
+      console.error("Error fetching visits:", error);
     }
     setLoading(false);
   };

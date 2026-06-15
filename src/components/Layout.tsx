@@ -27,11 +27,11 @@ import {
 import { supabase, Service, Notification as NotificationType } from '../lib/supabase';
 
 const navItems = [
-  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting'] },
-  { path: '/visits', label: 'Visites', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting'] },
+  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier'] },
+  { path: '/visits', label: 'Visites', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier'] },
   { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception'] },
   { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager'] },
-  { path: '/invoices', label: 'Facturation', icon: CreditCard, roles: ['admin', 'director', 'accounting'] },
+  { path: '/invoices', label: 'Facturation', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier'] },
   { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director'] },
   { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin'] },
   { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin'] },
@@ -131,6 +131,7 @@ export default function Layout() {
       reception: 'Reception',
       service_manager: 'Responsable Service',
       accounting: 'Comptabilite',
+      cashier: 'Caissier(ere)',
     };
     return labels[role] || role;
   };

@@ -85,6 +85,7 @@ export default function VisitsListPage() {
     } else if (error) {
       console.error("Error fetching visits:", error);
     }
+    setLoading(false);
   };
 
   const exportToCSV = () => {

@@ -94,24 +94,22 @@ export default function RHPage() {
     setLoading(false);
   };
 
-  const triggerGPS = () => {
-    // Attempt native GPS geolocation
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setGpsSimulated({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-        },
-        () => {
-          // Fallback mockup coordinate (Plateau, Abidjan)
-          setGpsSimulated({ lat: 5.324, lng: -4.021 });
-        }
-      );
-    } else {
-      setGpsSimulated({ lat: 5.324, lng: -4.021 });
-    }
+  const getGPSCoords = (): Promise<{ lat: number; lng: number }> => {
+    return new Promise((resolve) => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => resolve({ lat: 5.324, lng: -4.021 })
+        );
+      } else {
+        resolve({ lat: 5.324, lng: -4.021 });
+      }
+    });
+  };
+
+  const triggerGPS = async () => {
+    const coords = await getGPSCoords();
+    setGpsSimulated(coords);
   };
 
   const handlePointageSimulated = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure') => {
@@ -123,10 +121,12 @@ export default function RHPage() {
 
     let gpsVal: string | null = null;
     if (qrVersion === 'v2' || qrVersion === 'v3') {
-      if (!gpsSimulated) {
-        triggerGPS();
+      let coords = gpsSimulated;
+      if (!coords) {
+        coords = await getGPSCoords();
+        setGpsSimulated(coords);
       }
-      gpsVal = gpsSimulated ? `LAT:${gpsSimulated.lat}, LNG:${gpsSimulated.lng}` : "LAT:5.324, LNG:-4.021 (Plateau)";
+      gpsVal = `LAT:${coords.lat.toFixed(5)}, LNG:${coords.lng.toFixed(5)}`;
     }
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -263,10 +263,17 @@ export default function RHPage() {
               {/* Left: Interactive pointage scanner simulator */}
               <div className="flex flex-col items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/60 rounded-3xl space-y-4">
                 <div className="relative w-44 h-44 bg-white p-3 rounded-2xl shadow-md border border-slate-100 flex items-center justify-center group overflow-hidden">
-                  <div className="text-center space-y-1 text-slate-700 dark:text-slate-900">
-                    <QrCode className="w-24 h-24 mx-auto text-slate-800 animate-pulse" />
-                    <span className="text-[8px] font-mono font-bold block max-w-[150px] truncate">{dynamicToken}</span>
-                  </div>
+                  {dynamicToken ? (
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(dynamicToken)}`}
+                      alt="Pointage QR Code"
+                      className="w-36 h-36 object-contain"
+                    />
+                  ) : (
+                    <div className="text-center space-y-1 text-slate-700 dark:text-slate-900 animate-pulse">
+                      <QrCode className="w-24 h-24 mx-auto text-slate-800" />
+                    </div>
+                  )}
                   {/* Dynamic laser bar scanning effect */}
                   <div className="absolute left-0 right-0 h-0.5 bg-primary-500 shadow-glow-primary animate-bounce top-1"></div>
                 </div>

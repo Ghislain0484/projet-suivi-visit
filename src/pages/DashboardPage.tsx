@@ -169,7 +169,7 @@ export default function DashboardPage() {
       const notInvoicedCount = invoices.filter(inv => inv.payment_status === 'not_invoiced').length;
 
       const totalActiveStaff = usersRes.data?.length || 0;
-      const presentStaff = presencesRes.data?.filter(p => p.status === 'present').length || 0;
+      const presentStaff = (presencesRes.data || []).filter(p => p.status === 'present').length;
       const missionStaff = missionsRes.data?.length || 0;
       const absentStaff = Math.max(0, totalActiveStaff - (presentStaff + missionStaff));
 

@@ -3,7 +3,9 @@ ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'));
 
 -- 2. Mise à jour de la table visits pour le suivi collaboratif
-ALTER TABLE visits ADD COLUMN IF NOT EXISTS assigned_collaborator_id UUID REFERENCES profiles(id) ON DELETE SET NULL;
+ALTER TABLE visits ADD COLUMN IF NOT EXISTS assigned_collaborator_id UUID;
+ALTER TABLE visits DROP CONSTRAINT IF EXISTS visits_assigned_collaborator_id_fkey;
+ALTER TABLE visits ADD CONSTRAINT visits_assigned_collaborator_id_fkey FOREIGN KEY (assigned_collaborator_id) REFERENCES profiles(id) ON DELETE SET NULL;
 ALTER TABLE visits ADD COLUMN IF NOT EXISTS observations TEXT;
 ALTER TABLE visits ADD COLUMN IF NOT EXISTS report TEXT;
 ALTER TABLE visits ADD COLUMN IF NOT EXISTS attachments TEXT[];

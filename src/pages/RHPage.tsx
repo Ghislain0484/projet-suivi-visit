@@ -24,11 +24,24 @@ export default function RHPage() {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // QR Simulator states
+  // QR Scanner & Token states
+  const [urlToken, setUrlToken] = useState<string | null>(null);
   const [qrVersion, setQrVersion] = useState<'v1' | 'v2' | 'v3'>('v1');
   const [dynamicToken, setDynamicToken] = useState('');
   const [gpsSimulated, setGpsSimulated] = useState<{ lat: number; lng: number } | null>(null);
   const [scanning, setScanning] = useState(false);
+
+  // Parse token from URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('token');
+    if (tokenParam) {
+      setUrlToken(tokenParam);
+      // Clean up URL query parameters
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
 
   // Permission Request Form state
   const [permForm, setPermForm] = useState({
@@ -112,7 +125,7 @@ export default function RHPage() {
     setGpsSimulated(coords);
   };
 
-  const handlePointageSimulated = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure') => {
+  const handlePointageSimulated = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure', tokenToUse?: string) => {
     if (!user) return;
     setScanning(true);
 
@@ -120,7 +133,10 @@ export default function RHPage() {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     let gpsVal: string | null = null;
-    if (qrVersion === 'v2' || qrVersion === 'v3') {
+    const token = tokenToUse || dynamicToken;
+    const isV2orV3 = token.includes('DYNAMIC') || token.includes('GPS') || qrVersion === 'v2' || qrVersion === 'v3';
+
+    if (isV2orV3) {
       let coords = gpsSimulated;
       if (!coords) {
         coords = await getGPSCoords();
@@ -138,7 +154,7 @@ export default function RHPage() {
           user_id: user.id,
           date: todayStr,
           arrival_time: nowISO,
-          qr_code_token: dynamicToken,
+          qr_code_token: token,
           gps_location: gpsVal,
           status: 'present',
         });
@@ -165,7 +181,8 @@ export default function RHPage() {
         if (error) throw error;
       }
 
-      fetchRHData();
+      await fetchRHData();
+      setUrlToken(null);
     } catch (err: any) {
       alert(err.message || "Erreur lors du pointage");
     } finally {
@@ -265,7 +282,7 @@ export default function RHPage() {
                 <div className="relative w-44 h-44 bg-white p-3 rounded-2xl shadow-md border border-slate-100 flex items-center justify-center group overflow-hidden">
                   {dynamicToken ? (
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(dynamicToken)}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/rh?token=${dynamicToken}`)}`}
                       alt="Pointage QR Code"
                       className="w-36 h-36 object-contain"
                     />
@@ -538,6 +555,101 @@ export default function RHPage() {
           </div>
         </div>
       </div>
+
+      {/* Pointage QR Code Modal */}
+      {urlToken && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shadow-2xl p-6 max-w-md w-full rounded-3xl animate-scale-in space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400">
+                <QrCode className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                  Pointage QR Code Détecté
+                </h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                  Jeton : <span className="font-mono text-primary-500">{urlToken}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 dark:text-slate-500 uppercase font-semibold">Statut aujourd'hui</span>
+                {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
+              </div>
+              <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium mt-1">
+                {!presence 
+                  ? "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Veuillez confirmer votre arrivée ci-dessous."
+                  : presence.departure_time 
+                  ? "Vous avez déjà pointé votre départ pour aujourd'hui. Votre journée est clôturée."
+                  : "Sélectionnez l'action de pointage que vous souhaitez effectuer."
+                }
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {!presence ? (
+                <button
+                  onClick={() => handlePointageSimulated('arrival', urlToken)}
+                  disabled={scanning}
+                  className="btn-primary w-full py-3 rounded-2xl text-xs font-bold"
+                >
+                  {scanning ? <Loader2 className="w-4.5 h-4.5 animate-spin mr-2" /> : <Clock className="w-4.5 h-4.5 mr-2" />}
+                  Valider l'Arrivée
+                </button>
+              ) : (
+                <>
+                  {/* Break Start Button */}
+                  {!presence.break_start && !presence.departure_time && (
+                    <button
+                      onClick={() => handlePointageSimulated('break_start', urlToken)}
+                      disabled={scanning}
+                      className="btn-warning w-full py-3 rounded-2xl text-xs font-bold"
+                    >
+                      <Pause className="w-4.5 h-4.5 mr-2" />
+                      Début Pause
+                    </button>
+                  )}
+
+                  {/* Break End Button */}
+                  {presence.break_start && !presence.break_end && !presence.departure_time && (
+                    <button
+                      onClick={() => handlePointageSimulated('break_end', urlToken)}
+                      disabled={scanning}
+                      className="btn-success w-full py-3 rounded-2xl text-xs font-bold"
+                    >
+                      <Play className="w-4.5 h-4.5 mr-2" />
+                      Retour de Pause
+                    </button>
+                  )}
+
+                  {/* Check-Out Button */}
+                  {!presence.departure_time && (
+                    <button
+                      onClick={() => handlePointageSimulated('departure', urlToken)}
+                      disabled={scanning}
+                      className="btn-danger w-full py-3 rounded-2xl text-xs font-bold"
+                    >
+                      <RotateCcw className="w-4.5 h-4.5 mr-2" />
+                      Clôturer & Pointer le Départ
+                    </button>
+                  )}
+                </>
+              )}
+
+              <button
+                onClick={() => setUrlToken(null)}
+                disabled={scanning}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all mt-1"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

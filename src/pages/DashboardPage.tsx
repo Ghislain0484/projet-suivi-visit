@@ -104,7 +104,10 @@ export default function DashboardPage() {
   }, [profile]);
 
   const fetchDashboardData = async () => {
-    if (!profile) return;
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     const now = new Date();

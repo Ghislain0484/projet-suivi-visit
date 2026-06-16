@@ -23,7 +23,7 @@ export function AuthGuard({ children, requiredRoles }: AuthGuardProps) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requiredRoles && profile && !requiredRoles.includes(profile.role)) {
+  if (requiredRoles && (!profile || !requiredRoles.includes(profile.role))) {
     return <Navigate to="/unauthorized" replace />;
   }
 

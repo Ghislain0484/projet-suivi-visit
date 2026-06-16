@@ -15,6 +15,8 @@ import {
   Sparkles,
   Loader2,
   CalendarDays,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function RHPage() {
@@ -30,6 +32,8 @@ export default function RHPage() {
   const [dynamicToken, setDynamicToken] = useState('');
   const [gpsSimulated, setGpsSimulated] = useState<{ lat: number; lng: number } | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [autoPointSuccess, setAutoPointSuccess] = useState<string | null>(null);
+  const [autoPointError, setAutoPointError] = useState<string | null>(null);
 
   // Parse token from URL parameters on mount
   useEffect(() => {
@@ -64,6 +68,95 @@ export default function RHPage() {
     }
     return () => clearInterval(interval);
   }, [user, qrVersion]);
+
+  // Auto-point when urlToken is set and loading of presence data is complete
+  useEffect(() => {
+    const triggerAutoPoint = async () => {
+      // presence is loaded when loading is false. presence can be null if not checked in yet.
+      if (urlToken && !loading && user && presence !== undefined) {
+        const sessionKey = `autopoint_processed_${urlToken}`;
+        if (sessionStorage.getItem(sessionKey)) return;
+        sessionStorage.setItem(sessionKey, 'true');
+
+        let action: 'arrival' | 'break_start' | 'break_end' | 'departure' | null = null;
+        if (!presence) {
+          action = 'arrival';
+        } else if (presence.break_start && !presence.break_end && !presence.departure_time) {
+          action = 'break_end';
+        } else if (!presence.departure_time) {
+          action = 'departure';
+        }
+
+        if (action) {
+          setScanning(true);
+          // Wait briefly for smooth animation feedback
+          await new Promise((resolve) => setTimeout(resolve, 800));
+
+          let gpsVal: string | null = null;
+          const isV2orV3 = urlToken.includes('DYNAMIC') || urlToken.includes('GPS') || qrVersion === 'v2' || qrVersion === 'v3';
+
+          if (isV2orV3) {
+            let coords = gpsSimulated;
+            if (!coords) {
+              coords = await getGPSCoords();
+              setGpsSimulated(coords);
+            }
+            gpsVal = `LAT:${coords.lat.toFixed(5)}, LNG:${coords.lng.toFixed(5)}`;
+          }
+
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const nowISO = new Date().toISOString();
+
+          try {
+            if (action === 'arrival') {
+              const { error } = await supabase.from('hr_presences').insert({
+                user_id: user.id,
+                date: todayStr,
+                arrival_time: nowISO,
+                qr_code_token: urlToken,
+                gps_location: gpsVal,
+                status: 'present',
+              });
+              if (error) throw error;
+              setAutoPointSuccess("Pointage d'ARRIVÉE enregistré avec succès !");
+            } else {
+              const updateData: any = {};
+              if (action === 'break_start') {
+                updateData.break_start = nowISO;
+                updateData.status = 'pause';
+                setAutoPointSuccess("Pointage de DÉBUT DE PAUSE enregistré !");
+              } else if (action === 'break_end') {
+                updateData.break_end = nowISO;
+                updateData.status = 'present';
+                setAutoPointSuccess("Pointage de RETOUR DE PAUSE enregistré !");
+              } else if (action === 'departure') {
+                updateData.departure_time = nowISO;
+                updateData.status = 'absent';
+                setAutoPointSuccess("Pointage de DÉPART enregistré avec succès. Bonne fin de journée !");
+              }
+              updateData.updated_at = nowISO;
+
+              const { error } = await supabase
+                .from('hr_presences')
+                .update(updateData)
+                .eq('user_id', user.id)
+                .eq('date', todayStr);
+              if (error) throw error;
+            }
+
+            await fetchRHData();
+          } catch (err: any) {
+            console.error("Auto pointage error:", err);
+            setAutoPointError(err.message || "Erreur lors du pointage automatique.");
+          } finally {
+            setScanning(false);
+          }
+        }
+      }
+    };
+
+    triggerAutoPoint();
+  }, [urlToken, loading, presence, user]);
 
   const rotateToken = () => {
     const randomHex = Math.random().toString(16).substring(2, 10).toUpperCase();
@@ -560,93 +653,164 @@ export default function RHPage() {
       {urlToken && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shadow-2xl p-6 max-w-md w-full rounded-3xl animate-scale-in space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400">
-                <QrCode className="w-6 h-6 animate-pulse" />
+            
+            {/* 1. Status: Scanning/Processing */}
+            {scanning && (
+              <div className="text-center py-8 space-y-4">
+                <Loader2 className="w-12 h-12 text-primary-600 dark:text-primary-400 animate-spin mx-auto" />
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Pointage en cours...</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-1">
+                    Enregistrement de votre heure et de votre position GPS en cours de validation...
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                  Pointage QR Code Détecté
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                  Jeton : <span className="font-mono text-primary-500">{urlToken}</span>
-                </p>
-              </div>
-            </div>
+            )}
 
-            <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-400 dark:text-slate-500 uppercase font-semibold">Statut aujourd'hui</span>
-                {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
-              </div>
-              <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium mt-1">
-                {!presence 
-                  ? "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Veuillez confirmer votre arrivée ci-dessous."
-                  : presence.departure_time 
-                  ? "Vous avez déjà pointé votre départ pour aujourd'hui. Votre journée est clôturée."
-                  : "Sélectionnez l'action de pointage que vous souhaitez effectuer."
-                }
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {!presence ? (
+            {/* 2. Status: Auto Point Success */}
+            {!scanning && autoPointSuccess && (
+              <div className="text-center py-6 space-y-5">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100 dark:border-emerald-800/30">
+                  <CheckCircle2 className="w-10 h-10" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Pointage Réussi !</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mt-2">
+                    {autoPointSuccess}
+                  </p>
+                </div>
                 <button
-                  onClick={() => handlePointageSimulated('arrival', urlToken)}
-                  disabled={scanning}
-                  className="btn-primary w-full py-3 rounded-2xl text-xs font-bold"
+                  onClick={() => {
+                    setUrlToken(null);
+                    setAutoPointSuccess(null);
+                    setAutoPointError(null);
+                  }}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all"
                 >
-                  {scanning ? <Loader2 className="w-4.5 h-4.5 animate-spin mr-2" /> : <Clock className="w-4.5 h-4.5 mr-2" />}
-                  Valider l'Arrivée
+                  Fermer
                 </button>
-              ) : (
-                <>
-                  {/* Break Start Button */}
-                  {!presence.break_start && !presence.departure_time && (
+              </div>
+            )}
+
+            {/* 3. Status: Auto Point Error */}
+            {!scanning && autoPointError && (
+              <div className="text-center py-6 space-y-5">
+                <div className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-500 flex items-center justify-center mx-auto border border-rose-100 dark:border-rose-800/30">
+                  <AlertCircle className="w-10 h-10" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Échec du Pointage</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mt-2">
+                    {autoPointError}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setUrlToken(null);
+                    setAutoPointSuccess(null);
+                    setAutoPointError(null);
+                  }}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all"
+                >
+                  Fermer
+                </button>
+              </div>
+            )}
+
+            {/* 4. Status: Normal flow (no auto action found or already completed for today) */}
+            {!scanning && !autoPointSuccess && !autoPointError && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400">
+                    <QrCode className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                      Pointage QR Code Détecté
+                    </h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                      Jeton : <span className="font-mono text-primary-500">{urlToken}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 dark:text-slate-500 uppercase font-semibold">Statut aujourd'hui</span>
+                    {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium mt-1">
+                    {presence?.departure_time 
+                      ? "Vous avez déjà clôturé votre journée de travail aujourd'hui. Aucun autre pointage n'est requis."
+                      : "Vous pouvez également choisir manuellement une action ci-dessous :"
+                    }
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {!presence ? (
                     <button
-                      onClick={() => handlePointageSimulated('break_start', urlToken)}
+                      onClick={() => handlePointageSimulated('arrival', urlToken)}
                       disabled={scanning}
-                      className="btn-warning w-full py-3 rounded-2xl text-xs font-bold"
+                      className="btn-primary w-full py-3 rounded-2xl text-xs font-bold"
                     >
-                      <Pause className="w-4.5 h-4.5 mr-2" />
-                      Début Pause
+                      <Clock className="w-4.5 h-4.5 mr-2" />
+                      Pointer l'Arrivée
                     </button>
+                  ) : (
+                    <>
+                      {/* Break Start Button */}
+                      {!presence.break_start && !presence.departure_time && (
+                        <button
+                          onClick={() => handlePointageSimulated('break_start', urlToken)}
+                          disabled={scanning}
+                          className="btn-warning w-full py-3 rounded-2xl text-xs font-bold"
+                        >
+                          <Pause className="w-4.5 h-4.5 mr-2" />
+                          Début Pause
+                        </button>
+                      )}
+
+                      {/* Break End Button */}
+                      {presence.break_start && !presence.break_end && !presence.departure_time && (
+                        <button
+                          onClick={() => handlePointageSimulated('break_end', urlToken)}
+                          disabled={scanning}
+                          className="btn-success w-full py-3 rounded-2xl text-xs font-bold"
+                        >
+                          <Play className="w-4.5 h-4.5 mr-2" />
+                          Retour de Pause
+                        </button>
+                      )}
+
+                      {/* Check-Out Button */}
+                      {!presence.departure_time && (
+                        <button
+                          onClick={() => handlePointageSimulated('departure', urlToken)}
+                          disabled={scanning}
+                          className="btn-danger w-full py-3 rounded-2xl text-xs font-bold"
+                        >
+                          <RotateCcw className="w-4.5 h-4.5 mr-2" />
+                          Clôturer le Départ
+                        </button>
+                      )}
+                    </>
                   )}
 
-                  {/* Break End Button */}
-                  {presence.break_start && !presence.break_end && !presence.departure_time && (
-                    <button
-                      onClick={() => handlePointageSimulated('break_end', urlToken)}
-                      disabled={scanning}
-                      className="btn-success w-full py-3 rounded-2xl text-xs font-bold"
-                    >
-                      <Play className="w-4.5 h-4.5 mr-2" />
-                      Retour de Pause
-                    </button>
-                  )}
-
-                  {/* Check-Out Button */}
-                  {!presence.departure_time && (
-                    <button
-                      onClick={() => handlePointageSimulated('departure', urlToken)}
-                      disabled={scanning}
-                      className="btn-danger w-full py-3 rounded-2xl text-xs font-bold"
-                    >
-                      <RotateCcw className="w-4.5 h-4.5 mr-2" />
-                      Clôturer & Pointer le Départ
-                    </button>
-                  )}
-                </>
-              )}
-
-              <button
-                onClick={() => setUrlToken(null)}
-                disabled={scanning}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all mt-1"
-              >
-                Annuler
-              </button>
-            </div>
+                  <button
+                    onClick={() => {
+                      setUrlToken(null);
+                      setAutoPointSuccess(null);
+                      setAutoPointError(null);
+                    }}
+                    disabled={scanning}
+                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all mt-1"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

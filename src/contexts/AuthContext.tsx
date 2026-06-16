@@ -29,12 +29,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const { data: profile } = await supabase
+          const { data: profile, error: selectError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single();
-          setProfile(profile);
+
+          if (profile) {
+            setProfile(profile);
+          } else {
+            console.log("Profile not found or error, attempting auto-create:", selectError);
+            const fallbackFullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Collaborateur';
+            const fallbackRole = (session.user.user_metadata?.role || 'collaborator') as UserRole;
+            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
+            const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
+
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                email: session.user.email || '',
+                full_name: fallbackFullName,
+                role: checkedRole,
+                is_active: true
+              })
+              .select()
+              .single();
+
+            if (!insertError && newProfile) {
+              setProfile(newProfile);
+            } else {
+              console.error("Auto profile creation failed:", insertError);
+              setProfile(null);
+            }
+          }
         }
       } catch (err) {
         console.error("Auth initialization failed:", err);
@@ -51,12 +79,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const { data: profile } = await supabase
+          const { data: profile, error: selectError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single();
-          setProfile(profile);
+
+          if (profile) {
+            setProfile(profile);
+          } else {
+            console.log("Profile not found or error, attempting auto-create on auth change:", selectError);
+            const fallbackFullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Collaborateur';
+            const fallbackRole = (session.user.user_metadata?.role || 'collaborator') as UserRole;
+            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
+            const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
+
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                email: session.user.email || '',
+                full_name: fallbackFullName,
+                role: checkedRole,
+                is_active: true
+              })
+              .select()
+              .single();
+
+            if (!insertError && newProfile) {
+              setProfile(newProfile);
+            } else {
+              console.error("Auto profile creation failed on auth change:", insertError);
+              setProfile(null);
+            }
+          }
         } else {
           setProfile(null);
         }

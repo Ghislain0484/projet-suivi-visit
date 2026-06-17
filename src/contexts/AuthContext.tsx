@@ -15,6 +15,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper function to prevent database queries from hanging infinitely (e.g. due to RLS recursion)
+const withTimeout = async <T,>(promise: Promise<T> | PromiseLike<T>, ms = 4000): Promise<T> => {
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Database query timed out')), ms);
+  });
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -29,11 +45,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const { data: profile, error: selectError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+          const { data: profile, error: selectError } = await withTimeout(
+            supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single()
+          );
 
           if (profile) {
             setProfile(profile);
@@ -44,17 +62,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
             const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
 
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert({
-                id: session.user.id,
-                email: session.user.email || '',
-                full_name: fallbackFullName,
-                role: checkedRole,
-                is_active: true
-              })
-              .select()
-              .single();
+            const { data: newProfile, error: insertError } = await withTimeout(
+              supabase
+                .from('profiles')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  full_name: fallbackFullName,
+                  role: checkedRole,
+                  is_active: true
+                })
+                .select()
+                .single()
+            );
 
             if (!insertError && newProfile) {
               setProfile(newProfile);
@@ -79,11 +99,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          const { data: profile, error: selectError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+          const { data: profile, error: selectError } = await withTimeout(
+            supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single()
+          );
 
           if (profile) {
             setProfile(profile);
@@ -94,17 +116,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
             const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
 
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert({
-                id: session.user.id,
-                email: session.user.email || '',
-                full_name: fallbackFullName,
-                role: checkedRole,
-                is_active: true
-              })
-              .select()
-              .single();
+            const { data: newProfile, error: insertError } = await withTimeout(
+              supabase
+                .from('profiles')
+                .insert({
+                  id: session.user.id,
+                  email: session.user.email || '',
+                  full_name: fallbackFullName,
+                  role: checkedRole,
+                  is_active: true
+                })
+                .select()
+                .single()
+            );
 
             if (!insertError && newProfile) {
               setProfile(newProfile);

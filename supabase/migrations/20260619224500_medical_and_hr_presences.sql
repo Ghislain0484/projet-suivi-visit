@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS public.medical_requests (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Assurer que la colonne attachments existe si la table a été créée précédemment
+ALTER TABLE public.medical_requests ADD COLUMN IF NOT EXISTS attachments TEXT[];
+
+
 -- 6. Création de la table hr_presences (Pointage) si absente, ou mise à jour avec géolocalisation
 CREATE TABLE IF NOT EXISTS public.hr_presences (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -96,6 +100,21 @@ CREATE TABLE IF NOT EXISTS public.hr_presences (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT unique_user_date UNIQUE (user_id, date)
 );
+
+-- Assurer que les colonnes nécessaires existent si la table a été créée précédemment
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS employee_name TEXT;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS check_in_latitude NUMERIC;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS check_in_longitude NUMERIC;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS check_out_latitude NUMERIC;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS check_out_longitude NUMERIC;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS location_accuracy NUMERIC;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS device_info TEXT;
+ALTER TABLE public.hr_presences ADD COLUMN IF NOT EXISTS qr_code_version TEXT;
+
+-- Mettre à jour la contrainte de statut pour autoriser 'departed' si la table existait
+ALTER TABLE public.hr_presences DROP CONSTRAINT IF EXISTS hr_presences_status_check;
+ALTER TABLE public.hr_presences ADD CONSTRAINT hr_presences_status_check CHECK (status IN ('present', 'pause', 'mission', 'displacement', 'absent', 'leave', 'permission', 'departed'));
+
 
 -- 7. Création de la table medical_files (Dossiers Médicaux Numériques)
 CREATE TABLE IF NOT EXISTS public.medical_files (

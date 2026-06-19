@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { supabase, HRPresence, Permission } from '../lib/supabase';
+import { supabase, HRPresence, Permission, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { format } from 'date-fns';
+import { format, differenceInMinutes } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Clock,
   QrCode,
   MapPin,
   FileText,
-
   Play,
   Pause,
   RotateCcw,
@@ -17,10 +16,15 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertCircle,
+  Users,
+  Search,
+  Filter,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function RHPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [presence, setPresence] = useState<HRPresence | null>(null);
   const [history, setHistory] = useState<HRPresence[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -30,10 +34,36 @@ export default function RHPage() {
   const [urlToken, setUrlToken] = useState<string | null>(null);
   const [qrVersion, setQrVersion] = useState<'v1' | 'v2' | 'v3'>('v1');
   const [dynamicToken, setDynamicToken] = useState('');
-  const [gpsSimulated, setGpsSimulated] = useState<{ lat: number; lng: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [autoPointSuccess, setAutoPointSuccess] = useState<string | null>(null);
   const [autoPointError, setAutoPointError] = useState<string | null>(null);
+
+  // GPS states
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [fetchingGps, setFetchingGps] = useState(false);
+
+  // Permission Request Form state
+  const [permForm, setPermForm] = useState({
+    type: 'permission' as 'permission' | 'absence' | 'leave',
+    reason: '',
+    start_date: format(new Date(), 'yyyy-MM-dd'),
+    end_date: format(new Date(), 'yyyy-MM-dd'),
+  });
+  const [submittingPerm, setSubmittingPerm] = useState(false);
+
+  // Admin/RH states
+  const [teamHistory, setTeamHistory] = useState<any[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
+  const [filterService, setFilterService] = useState('');
+  const [filterCollaborator, setFilterCollaborator] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [services, setServices] = useState<any[]>([]);
+  const [collaborators, setCollaborators] = useState<Profile[]>([]);
+  const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
+
+  const isAdminOrRH = profile && ['admin', 'director', 'reception'].includes(profile.role);
 
   // Parse token from URL parameters on mount
   useEffect(() => {
@@ -47,17 +77,12 @@ export default function RHPage() {
     }
   }, []);
 
-  // Permission Request Form state
-  const [permForm, setPermForm] = useState({
-    type: 'permission' as 'permission' | 'absence' | 'leave',
-    reason: '',
-    start_date: format(new Date(), 'yyyy-MM-dd'),
-    end_date: format(new Date(), 'yyyy-MM-dd'),
-  });
-  const [submittingPerm, setSubmittingPerm] = useState(false);
-
   useEffect(() => {
     fetchRHData();
+    if (isAdminOrRH) {
+      fetchTeamData();
+      fetchMetadata();
+    }
     // Dynamic QR rotation interval (V3)
     let interval: any;
     if (qrVersion === 'v3') {
@@ -67,12 +92,11 @@ export default function RHPage() {
       setDynamicToken('GICO-PRESENCE-STATIC-TOKEN-12345');
     }
     return () => clearInterval(interval);
-  }, [user, qrVersion]);
+  }, [user, qrVersion, profile]);
 
   // Auto-point when urlToken is set and loading of presence data is complete
   useEffect(() => {
     const triggerAutoPoint = async () => {
-      // presence is loaded when loading is false. presence can be null if not checked in yet.
       if (urlToken && !loading && user && presence !== undefined) {
         const sessionKey = `autopoint_processed_${urlToken}`;
         if (sessionStorage.getItem(sessionKey)) return;
@@ -89,35 +113,57 @@ export default function RHPage() {
 
         if (action) {
           setScanning(true);
-          // Wait briefly for smooth animation feedback
           await new Promise((resolve) => setTimeout(resolve, 800));
 
-          let gpsVal: string | null = null;
-          const isV2orV3 = urlToken.includes('DYNAMIC') || urlToken.includes('GPS') || qrVersion === 'v2' || qrVersion === 'v3';
-
-          if (isV2orV3) {
-            let coords = gpsSimulated;
-            if (!coords) {
-              coords = await getGPSCoords();
-              setGpsSimulated(coords);
-            }
-            gpsVal = `LAT:${coords.lat.toFixed(5)}, LNG:${coords.lng.toFixed(5)}`;
-          }
-
-          const todayStr = format(new Date(), 'yyyy-MM-dd');
-          const nowISO = new Date().toISOString();
-
           try {
+            // Geolocation is mandatory for V3 or QR checks
+            const isV3 = urlToken.includes('DYNAMIC') || qrVersion === 'v3';
+            let lat: number | null = null;
+            let lng: number | null = null;
+            let accuracy: number | null = null;
+
+            if (isV3) {
+              try {
+                const pos = await getGPSCoordsPromise();
+                lat = pos.coords.latitude;
+                lng = pos.coords.longitude;
+                accuracy = pos.coords.accuracy;
+              } catch (e: any) {
+                throw new Error("Géolocalisation obligatoire : " + e.message);
+              }
+            }
+
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            const nowISO = new Date().toISOString();
+            const gpsVal = lat ? `LAT:${lat.toFixed(5)}, LNG:${lng.toFixed(5)} (±${accuracy?.toFixed(0)}m)` : null;
+
             if (action === 'arrival') {
+              // Double check-in prevention
+              const { data: alreadyExists } = await supabase
+                .from('hr_presences')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('date', todayStr)
+                .maybeSingle();
+
+              if (alreadyExists) {
+                throw new Error("Vous avez déjà pointé votre arrivée pour aujourd'hui.");
+              }
+
               const { error } = await supabase.from('hr_presences').insert({
                 user_id: user.id,
+                employee_name: profile?.full_name || user.email,
                 date: todayStr,
                 arrival_time: nowISO,
                 qr_code_token: urlToken,
                 gps_location: gpsVal,
+                check_in_latitude: lat,
+                check_in_longitude: lng,
+                location_accuracy: accuracy,
+                qr_code_version: qrVersion,
                 status: 'present',
               });
-              if (error) throw error;
+              if (error) throw new Error("La table de présence est introuvable ou mal configurée.");
               setAutoPointSuccess("Pointage d'ARRIVÉE enregistré avec succès !");
             } else {
               const updateData: any = {};
@@ -131,8 +177,10 @@ export default function RHPage() {
                 setAutoPointSuccess("Pointage de RETOUR DE PAUSE enregistré !");
               } else if (action === 'departure') {
                 updateData.departure_time = nowISO;
-                updateData.status = 'absent';
-                setAutoPointSuccess("Pointage de DÉPART enregistré avec succès. Bonne fin de journée !");
+                updateData.status = 'departed';
+                updateData.check_out_latitude = lat;
+                updateData.check_out_longitude = lng;
+                setAutoPointSuccess("Pointage de DÉPART enregistré. Bonne soirée !");
               }
               updateData.updated_at = nowISO;
 
@@ -141,10 +189,11 @@ export default function RHPage() {
                 .update(updateData)
                 .eq('user_id', user.id)
                 .eq('date', todayStr);
-              if (error) throw error;
+              if (error) throw new Error("Erreur de mise à jour du pointage.");
             }
 
             await fetchRHData();
+            if (isAdminOrRH) fetchTeamData();
           } catch (err: any) {
             console.error("Auto pointage error:", err);
             setAutoPointError(err.message || "Erreur lors du pointage automatique.");
@@ -163,95 +212,177 @@ export default function RHPage() {
     setDynamicToken(`GICO-DYNAMIC-QR-${randomHex}-${Date.now()}`);
   };
 
-  const fetchRHData = async () => {
-    if (!user) return;
-    setLoading(true);
-
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-
-    // Fetch today's presence record
-    const { data: todayPresence } = await supabase
-      .from('hr_presences')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('date', todayStr)
-      .maybeSingle();
-
-    if (todayPresence) setPresence(todayPresence as any);
-    else setPresence(null);
-
-    // Fetch history
-    const { data: hist } = await supabase
-      .from('hr_presences')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false })
-      .limit(10);
-    if (hist) setHistory(hist as any);
-
-    // Fetch permissions
-    const { data: perms } = await supabase
-      .from('permissions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    if (perms) setPermissions(perms as any);
-
-    setLoading(false);
-  };
-
-  const getGPSCoords = (): Promise<{ lat: number; lng: number }> => {
-    return new Promise((resolve) => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-          () => resolve({ lat: 5.324, lng: -4.021 })
-        );
-      } else {
-        resolve({ lat: 5.324, lng: -4.021 });
+  const getGPSCoordsPromise = (): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Le navigateur ne supporte pas la géolocalisation."));
+        return;
       }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
     });
   };
 
-  const triggerGPS = async () => {
-    const coords = await getGPSCoords();
-    setGpsSimulated(coords);
+  const requestGPS = async () => {
+    setFetchingGps(true);
+    setGpsError(null);
+    try {
+      const pos = await getGPSCoordsPromise();
+      setGpsCoords({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      });
+    } catch (e: any) {
+      let msg = "Erreur de géolocalisation.";
+      if (e.code === 1) {
+        msg = "Veuillez autoriser l'accès GPS dans les paramètres de votre navigateur.";
+      } else if (e.code === 2) {
+        msg = "Position GPS indisponible.";
+      } else if (e.code === 3) {
+        msg = "Délai d'attente GPS dépassé.";
+      }
+      setGpsError(msg);
+      setGpsCoords(null);
+    } finally {
+      setFetchingGps(false);
+    }
   };
 
-  const handlePointageSimulated = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure', tokenToUse?: string) => {
+  const fetchRHData = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+      // Fetch today's presence record
+      const { data: todayPresence } = await supabase
+        .from('hr_presences')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('date', todayStr)
+        .maybeSingle();
+
+      setPresence(todayPresence as HRPresence);
+
+      // Fetch history
+      const { data: hist } = await supabase
+        .from('hr_presences')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(15);
+      if (hist) setHistory(hist as HRPresence[]);
+
+      // Fetch permissions
+      const { data: perms } = await supabase
+        .from('permissions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (perms) setPermissions(perms as Permission[]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTeamData = async () => {
+    setLoadingTeam(true);
+    try {
+      let query = supabase
+        .from('hr_presences')
+        .select('*, profile:profiles(*, service:services(*))')
+        .order('date', { ascending: false });
+
+      if (filterDate) query = query.eq('date', filterDate);
+      if (filterCollaborator) query = query.eq('user_id', filterCollaborator);
+      if (filterStatus) query = query.eq('status', filterStatus);
+
+      const { data } = await query;
+      if (data) {
+        // Local filtering by service since it's nested
+        let filtered = data;
+        if (filterService) {
+          filtered = data.filter((item: any) => item.profile?.service_id === filterService);
+        }
+        setTeamHistory(filtered);
+      }
+    } catch (err) {
+      console.error("Fetch team history error:", err);
+    } finally {
+      setLoadingTeam(false);
+    }
+  };
+
+  const fetchMetadata = async () => {
+    const { data: svcs } = await supabase.from('services').select('*').eq('is_active', true);
+    if (svcs) setServices(svcs);
+
+    const { data: collabs } = await supabase.from('profiles').select('*').eq('is_active', true);
+    if (collabs) setCollaborators(collabs);
+  };
+
+  const handleManualPointage = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure') => {
     if (!user) return;
     setScanning(true);
-
-    // Add brief artificial latency for premium scanner effect
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    let gpsVal: string | null = null;
-    const token = tokenToUse || dynamicToken;
-    const isV2orV3 = token.includes('DYNAMIC') || token.includes('GPS') || qrVersion === 'v2' || qrVersion === 'v3';
-
-    if (isV2orV3) {
-      let coords = gpsSimulated;
-      if (!coords) {
-        coords = await getGPSCoords();
-        setGpsSimulated(coords);
-      }
-      gpsVal = `LAT:${coords.lat.toFixed(5)}, LNG:${coords.lng.toFixed(5)}`;
-    }
-
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const nowISO = new Date().toISOString();
+    setGpsError(null);
 
     try {
+      // 1. Get GPS coordinates (mandatory for V3, highly recommended for others)
+      let lat: number | null = null;
+      let lng: number | null = null;
+      let accuracy: number | null = null;
+
+      try {
+        const pos = await getGPSCoordsPromise();
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        accuracy = pos.coords.accuracy;
+        setGpsCoords({ lat, lng, accuracy });
+      } catch (gpsErr: any) {
+        // Geolocation is mandatory for V3
+        if (qrVersion === 'v3') {
+          throw new Error("Géolocalisation obligatoire pour le pointage V3 : Veuillez autoriser le GPS.");
+        }
+        console.warn("GPS failed, continuing without GPS coordinates:", gpsErr);
+      }
+
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const nowISO = new Date().toISOString();
+      const gpsVal = lat ? `LAT:${lat.toFixed(5)}, LNG:${lng.toFixed(5)} (±${accuracy?.toFixed(0)}m)` : null;
+
       if (action === 'arrival') {
+        // Double check-in check
+        const { data: alreadyExists } = await supabase
+          .from('hr_presences')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('date', todayStr)
+          .maybeSingle();
+
+        if (alreadyExists) {
+          throw new Error("Vous avez déjà pointé votre arrivée pour aujourd'hui.");
+        }
+
         const { error } = await supabase.from('hr_presences').insert({
           user_id: user.id,
+          employee_name: profile?.full_name || user.email,
           date: todayStr,
           arrival_time: nowISO,
-          qr_code_token: token,
+          qr_code_token: dynamicToken,
           gps_location: gpsVal,
+          check_in_latitude: lat,
+          check_in_longitude: lng,
+          location_accuracy: accuracy,
+          qr_code_version: qrVersion,
           status: 'present',
         });
-        if (error) throw error;
+        if (error) throw new Error("La table de présence est introuvable ou mal configurée.");
       } else {
         const updateData: any = {};
         if (action === 'break_start') {
@@ -262,7 +393,9 @@ export default function RHPage() {
           updateData.status = 'present';
         } else if (action === 'departure') {
           updateData.departure_time = nowISO;
-          updateData.status = 'absent';
+          updateData.status = 'departed';
+          updateData.check_out_latitude = lat;
+          updateData.check_out_longitude = lng;
         }
         updateData.updated_at = nowISO;
 
@@ -271,13 +404,13 @@ export default function RHPage() {
           .update(updateData)
           .eq('user_id', user.id)
           .eq('date', todayStr);
-        if (error) throw error;
+        if (error) throw new Error("Erreur de mise à jour du pointage.");
       }
 
       await fetchRHData();
-      setUrlToken(null);
+      if (isAdminOrRH) fetchTeamData();
     } catch (err: any) {
-      alert(err.message || "Erreur lors du pointage");
+      alert(err.message || "Erreur lors du pointage.");
     } finally {
       setScanning(false);
     }
@@ -315,13 +448,46 @@ export default function RHPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (teamHistory.length === 0) return;
+    const headers = ["Date", "Collaborateur", "Service", "Arrivee", "Debut Pause", "Fin Pause", "Depart", "Duree (min)", "Statut", "GPS"];
+    const rows = teamHistory.map((item) => {
+      const duration = item.arrival_time && item.departure_time 
+        ? differenceInMinutes(new Date(item.departure_time), new Date(item.arrival_time)) 
+        : "";
+      return [
+        item.date,
+        item.profile?.full_name || item.employee_name || "",
+        item.profile?.service?.name || "",
+        item.arrival_time ? format(new Date(item.arrival_time), 'HH:mm:ss') : "",
+        item.break_start ? format(new Date(item.break_start), 'HH:mm:ss') : "",
+        item.break_end ? format(new Date(item.break_end), 'HH:mm:ss') : "",
+        item.departure_time ? format(new Date(item.departure_time), 'HH:mm:ss') : "",
+        duration,
+        item.status,
+        item.gps_location || "",
+      ];
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `presence_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getStatusBadge = (status: string) => {
     const config: Record<string, { label: string; class: string }> = {
       present: { label: 'Présent', class: 'badge-success' },
       pause: { label: 'En pause', class: 'badge-warning' },
       mission: { label: 'En mission', class: 'badge-primary' },
       displacement: { label: 'Déplacement', class: 'badge-info' },
-      absent: { label: 'Parti / Absent', class: 'badge-gray' },
+      absent: { label: 'Absent', class: 'badge-danger' },
+      departed: { label: 'Parti', class: 'badge-gray' },
       leave: { label: 'En Congé', class: 'badge-gold' },
       permission: { label: 'Permission', class: 'badge-gray' },
     };
@@ -329,203 +495,521 @@ export default function RHPage() {
     return <span className={`badge ${current.class}`}>{current.label}</span>;
   };
 
+  const getDurationString = (h: HRPresence) => {
+    if (!h.arrival_time || !h.departure_time) return '-';
+    const mins = differenceInMinutes(new Date(h.departure_time), new Date(h.arrival_time));
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    return `${hours}h ${remMins}m`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400 font-semibold text-xs uppercase tracking-wider">
-          <Sparkles className="w-4 h-4" /> Ressources Humaines
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400 font-semibold text-xs uppercase tracking-wider">
+            <Sparkles className="w-4 h-4" /> Ressources Humaines & Présences
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Espace RH & Pointage</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+            Gérer votre temps de présence journalier, votre géolocalisation et vos demandes administratives.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Espace RH & Pointage</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-          Gérer votre temps de présence journalier et vos demandes administratives
-        </p>
+
+        {/* Supervision tab switcher for admin */}
+        {isAdminOrRH && (
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 shrink-0 self-start sm:self-center">
+            <button
+              onClick={() => setActiveTab('personal')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'personal'
+                  ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Clock className="w-4 h-4" /> Mon Pointage
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('team');
+                fetchTeamData();
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'team'
+                  ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Users className="w-4 h-4" /> Supervision RH
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Check-In QR and GPS Simulator Column */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card overflow-hidden">
-            <div className="card-header bg-gradient-to-r from-primary-600/5 to-primary-700/5">
-              <h2 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-primary-600" />
-                Simulateur de Pointage Intelligent (V1 - V3)
-              </h2>
-              {/* Pointage version switcher */}
-              <div className="flex bg-slate-100 dark:bg-slate-950 p-0.5 rounded-xl border border-slate-200/40 dark:border-slate-800/40">
-                {(['v1', 'v2', 'v3'] as const).map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setQrVersion(v)}
-                    className={`px-3 py-1 rounded-lg text-[10px] font-extrabold capitalize transition-all ${
-                      qrVersion === v
-                        ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
-                        : 'text-slate-500'
-                    }`}
-                  >
-                    {v.toUpperCase()}
-                  </button>
-                ))}
+      {activeTab === 'personal' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Pointage Simulator and control board */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="card overflow-hidden">
+              <div className="card-header bg-gradient-to-r from-primary-600/5 to-primary-700/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-primary-600" />
+                  Terminal de Pointage (V1 - V3)
+                </h2>
+                <div className="flex bg-slate-100 dark:bg-slate-950 p-0.5 rounded-xl border border-slate-200/40 dark:border-slate-800/40 shrink-0">
+                  {(['v1', 'v2', 'v3'] as const).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setQrVersion(v)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black capitalize transition-all ${
+                        qrVersion === v
+                          ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      {v.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                {/* QR Code and GPS Authorization */}
+                <div className="flex flex-col items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/60 rounded-3xl space-y-4">
+                  <div className="relative w-44 h-44 bg-white p-3 rounded-2xl shadow-md border border-slate-100 flex items-center justify-center group overflow-hidden">
+                    {dynamicToken ? (
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/rh?token=${dynamicToken}`)}`}
+                        alt="Pointage QR Code"
+                        className="w-36 h-36 object-contain"
+                      />
+                    ) : (
+                      <QrCode className="w-24 h-24 text-slate-300 animate-pulse" />
+                    )}
+                    <div className="absolute left-0 right-0 h-0.5 bg-primary-500 shadow-glow-primary animate-bounce top-1"></div>
+                  </div>
+
+                  <div className="text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white capitalize">
+                      {qrVersion === 'v1' ? 'QR Code Statique standard' : qrVersion === 'v2' ? 'QR Code + Validation Connecté' : 'QR Code + GPS Obligatoire (V3)'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                      {qrVersion === 'v3' ? 'Le jeton dynamique expire toutes les 5s.' : 'Jeton sécurisé fixe.'}
+                    </p>
+                  </div>
+
+                  {/* Real GPS status indicator */}
+                  <div className="w-full space-y-2">
+                    <button
+                      onClick={requestGPS}
+                      disabled={fetchingGps}
+                      className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                        gpsCoords
+                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-500/20'
+                          : gpsError
+                            ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 border-rose-500/20'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 hover:bg-slate-50 border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      {fetchingGps ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <MapPin className="w-3.5 h-3.5" />
+                      )}
+                      {gpsCoords
+                        ? `GPS Connecté (Précision ±${gpsCoords.accuracy.toFixed(0)}m)`
+                        : gpsError
+                          ? gpsError
+                          : 'Autoriser la géolocalisation'}
+                    </button>
+                    {gpsCoords && (
+                      <div className="text-[10px] text-center text-slate-400 font-mono">
+                        Lat: {gpsCoords.lat.toFixed(5)} | Lng: {gpsCoords.lng.toFixed(5)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Pointage Controls */}
+                <div className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Statut aujourd'hui</span>
+                      {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800/50">
+                        <span className="text-[10px] text-slate-400 font-medium block">Arrivée</span>
+                        <span className="font-extrabold text-slate-800 dark:text-white">
+                          {presence?.arrival_time ? format(new Date(presence.arrival_time), 'HH:mm:ss') : '--:--:--'}
+                        </span>
+                      </div>
+                      <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800/50">
+                        <span className="text-[10px] text-slate-400 font-medium block">Départ</span>
+                        <span className="font-extrabold text-slate-800 dark:text-white">
+                          {presence?.departure_time ? format(new Date(presence.departure_time), 'HH:mm:ss') : '--:--:--'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {!presence ? (
+                      <button
+                        onClick={() => handleManualPointage('arrival')}
+                        disabled={scanning}
+                        className="btn-primary w-full py-3.5 rounded-2xl text-xs font-extrabold flex items-center justify-center gap-2"
+                      >
+                        {scanning ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <Clock className="w-4.5 h-4.5" />}
+                        Pointer l'Arrivée
+                      </button>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Pause button */}
+                          {presence.status === 'present' && !presence.departure_time && (
+                            <button
+                              onClick={() => handleManualPointage('break_start')}
+                              disabled={scanning}
+                              className="btn-warning py-3 rounded-xl text-xs font-bold"
+                            >
+                              <Pause className="w-4 h-4 mr-1.5" /> Pause
+                            </button>
+                          )}
+                          {/* Resume button */}
+                          {presence.status === 'pause' && !presence.departure_time && (
+                            <button
+                              onClick={() => handleManualPointage('break_end')}
+                              disabled={scanning}
+                              className="btn-success py-3 rounded-xl text-xs font-bold"
+                            >
+                              <Play className="w-4 h-4 mr-1.5" /> Reprise
+                            </button>
+                          )}
+
+                          {/* Checkout button */}
+                          {!presence.departure_time && (
+                            <button
+                              onClick={() => handleManualPointage('departure')}
+                              disabled={scanning}
+                              className={`btn-danger py-3 rounded-xl text-xs font-bold ${presence.status === 'pause' ? 'col-span-2' : ''}`}
+                            >
+                              <RotateCcw className="w-4 h-4 mr-1.5" /> Départ
+                            </button>
+                          )}
+                        </div>
+                        {presence.departure_time && (
+                          <div className="p-3 bg-emerald-50/40 dark:bg-emerald-950/10 text-emerald-600 text-center rounded-xl text-xs font-bold border border-emerald-500/10">
+                            Journée de travail clôturée avec succès.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              {/* Left: Interactive pointage scanner simulator */}
-              <div className="flex flex-col items-center justify-center p-6 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-100 dark:border-slate-800/60 rounded-3xl space-y-4">
-                <div className="relative w-44 h-44 bg-white p-3 rounded-2xl shadow-md border border-slate-100 flex items-center justify-center group overflow-hidden">
-                  {dynamicToken ? (
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/rh?token=${dynamicToken}`)}`}
-                      alt="Pointage QR Code"
-                      className="w-36 h-36 object-contain"
-                    />
-                  ) : (
-                    <div className="text-center space-y-1 text-slate-700 dark:text-slate-900 animate-pulse">
-                      <QrCode className="w-24 h-24 mx-auto text-slate-800" />
-                    </div>
-                  )}
-                  {/* Dynamic laser bar scanning effect */}
-                  <div className="absolute left-0 right-0 h-0.5 bg-primary-500 shadow-glow-primary animate-bounce top-1"></div>
-                </div>
-
-                <div className="text-center space-y-1">
-                  <p className="text-xs font-bold text-slate-800 dark:text-white capitalize">
-                    {qrVersion === 'v1' ? 'QR Code Statique' : qrVersion === 'v2' ? 'QR Code + GPS' : 'QR Code Dynamique Sécurisé (V3)'}
-                  </p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                    {qrVersion === 'v3' ? 'Le jeton de sécurité tourne toutes les 5 secondes.' : 'Jeton sécurisé fixe.'}
-                  </p>
-                </div>
-
-                {/* GPS trigger status */}
-                {(qrVersion === 'v2' || qrVersion === 'v3') && (
-                  <button
-                    onClick={triggerGPS}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-bold ${
-                      gpsSimulated
-                        ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-500/20'
-                        : 'bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 border-slate-200'
-                    }`}
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                    {gpsSimulated ? `Simulé: ${gpsSimulated.lat.toFixed(3)}, ${gpsSimulated.lng.toFixed(3)}` : 'Activer localisation GPS'}
-                  </button>
-                )}
+            {/* History Table (Personal) */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Mon Historique de Présence</h3>
               </div>
-
-              {/* Right: Pointage control dashboard */}
-              <div className="space-y-4">
-                <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">État actuel</span>
-                    {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
+              <div className="card-body p-0">
+                {history.length === 0 ? (
+                  <p className="text-sm text-slate-400 dark:text-slate-600 italic text-center py-8">Aucun enregistrement de pointage.</p>
+                ) : (
+                  <div className="table-container border-0 rounded-none shadow-none">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Arrivée</th>
+                          <th>Pause</th>
+                          <th>Retour</th>
+                          <th>Départ</th>
+                          <th>Durée</th>
+                          <th>Statut</th>
+                          <th>Localisation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((h) => (
+                          <tr key={h.id}>
+                            <td className="font-bold text-slate-800 dark:text-white">
+                              {format(new Date(h.date), 'dd MMMM yyyy', { locale: fr })}
+                            </td>
+                            <td className="font-mono text-xs">{h.arrival_time ? format(new Date(h.arrival_time), 'HH:mm:ss') : '-'}</td>
+                            <td className="font-mono text-xs">{h.break_start ? format(new Date(h.break_start), 'HH:mm:ss') : '-'}</td>
+                            <td className="font-mono text-xs">{h.break_end ? format(new Date(h.break_end), 'HH:mm:ss') : '-'}</td>
+                            <td className="font-mono text-xs">{h.departure_time ? format(new Date(h.departure_time), 'HH:mm:ss') : '-'}</td>
+                            <td className="font-semibold text-slate-700 dark:text-slate-300">{getDurationString(h)}</td>
+                            <td>{getStatusBadge(h.status)}</td>
+                            <td className="text-xs text-slate-400 max-w-[150px] truncate" title={h.gps_location || ''}>
+                              {h.gps_location || 'Néant (V1)'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800/50">
-                      <span className="text-[10px] text-slate-400 font-medium block">Arrivée</span>
-                      <span className="font-extrabold text-slate-800 dark:text-white">{presence?.arrival_time ? format(new Date(presence.arrival_time), 'HH:mm') : '--:--'}</span>
-                    </div>
-                    <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800/50">
-                      <span className="text-[10px] text-slate-400 font-medium block">Départ</span>
-                      <span className="font-extrabold text-slate-800 dark:text-white">{presence?.departure_time ? format(new Date(presence.departure_time), 'HH:mm') : '--:--'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {!presence ? (
-                    <button
-                      onClick={() => handlePointageSimulated('arrival')}
-                      disabled={scanning}
-                      className="btn-primary col-span-2 py-3 rounded-2xl text-xs"
-                    >
-                      {scanning ? <Loader2 className="w-4.5 h-4.5 animate-spin mr-2" /> : <Clock className="w-4.5 h-4.5 mr-2" />}
-                      Pointer l'Arrivée
-                    </button>
-                  ) : (
-                    <>
-                      {/* Break Start Button */}
-                      {!presence.break_start && !presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('break_start')}
-                          disabled={scanning}
-                          className="btn-warning py-3 rounded-2xl text-xs"
-                        >
-                          <Pause className="w-4 h-4 mr-1.5" />
-                          Début Pause
-                        </button>
-                      )}
-
-                      {/* Break End Button */}
-                      {presence.break_start && !presence.break_end && !presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('break_end')}
-                          disabled={scanning}
-                          className="btn-success py-3 rounded-2xl text-xs"
-                        >
-                          <Play className="w-4 h-4 mr-1.5" />
-                          Retour Pause
-                        </button>
-                      )}
-
-                      {/* Check-Out Button */}
-                      {!presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('departure')}
-                          disabled={scanning}
-                          className="btn-danger col-span-2 py-3 rounded-2xl text-xs"
-                        >
-                          <RotateCcw className="w-4.5 h-4.5 mr-2" />
-                          Pointer le Départ
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* History log timeline */}
+          {/* Right Column: Absences requests */}
+          <div className="space-y-6">
+            <div className="card">
+              <div className="card-header">
+                <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary-600" />
+                  Demander une absence
+                </h3>
+              </div>
+              <form onSubmit={handlePermissionSubmit} className="card-body space-y-4">
+                <div>
+                  <label className="label">Type de demande *</label>
+                  <select
+                    value={permForm.type}
+                    onChange={(e) => setPermForm((p) => ({ ...p, type: e.target.value as any }))}
+                    className="input"
+                    required
+                  >
+                    <option value="permission">Permission Exceptionnelle</option>
+                    <option value="absence">Absence Justifiée</option>
+                    <option value="leave">Congés Annuels</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="label">Motif / Justification *</label>
+                  <textarea
+                    value={permForm.reason}
+                    onChange={(e) => setPermForm((p) => ({ ...p, reason: e.target.value }))}
+                    className="input min-h-[90px]"
+                    placeholder="Veuillez décrire le motif de votre absence..."
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Date de début *</label>
+                    <input
+                      type="date"
+                      value={permForm.start_date}
+                      onChange={(e) => setPermForm((p) => ({ ...p, start_date: e.target.value }))}
+                      className="input"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Date de fin *</label>
+                    <input
+                      type="date"
+                      value={permForm.end_date}
+                      onChange={(e) => setPermForm((p) => ({ ...p, end_date: e.target.value }))}
+                      className="input"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submittingPerm}
+                  className="btn-primary w-full py-2.5 rounded-xl text-xs mt-2"
+                >
+                  {submittingPerm ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                  Soumettre ma demande
+                </button>
+              </form>
+            </div>
+
+            {/* Demandes history */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-primary-600" />
+                  Vos demandes ({permissions.length})
+                </h3>
+              </div>
+              <div className="card-body p-4 space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin">
+                {permissions.length === 0 ? (
+                  <p className="text-xs text-slate-400 dark:text-slate-600 italic text-center py-4">Aucune demande en cours.</p>
+                ) : (
+                  permissions.map((p) => (
+                    <div
+                      key={p.id}
+                      className="p-3 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-primary-600 dark:text-primary-400">{p.type}</span>
+                        <span
+                          className={`badge ${
+                            p.status === 'pending'
+                              ? 'badge-warning'
+                              : p.status === 'approved'
+                                ? 'badge-success'
+                                : 'badge-danger'
+                          }`}
+                        >
+                          {p.status === 'pending' ? 'En attente' : p.status === 'approved' ? 'Approuvé' : 'Rejeté'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700 dark:text-slate-300 font-medium line-clamp-2">{p.reason}</p>
+                      <div className="flex justify-between items-center text-[9px] text-slate-400 dark:text-slate-500 font-semibold border-t border-slate-100 dark:border-slate-800/60 pt-2">
+                        <span>Du {format(new Date(p.start_date), 'dd/MM')} au {format(new Date(p.end_date), 'dd/MM/yyyy')}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Team Supervision View */
+        <div className="space-y-6">
+          {/* Filters Card */}
+          <div className="card p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+              <div>
+                <label className="label text-[10px] uppercase font-bold">Date de pointage</label>
+                <input
+                  type="date"
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className="input"
+                />
+              </div>
+
+              <div>
+                <label className="label text-[10px] uppercase font-bold">Service / Département</label>
+                <select
+                  value={filterService}
+                  onChange={(e) => setFilterService(e.target.value)}
+                  className="input"
+                >
+                  <option value="">Tous les services</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label text-[10px] uppercase font-bold">Collaborateur</label>
+                <select
+                  value={filterCollaborator}
+                  onChange={(e) => setFilterCollaborator(e.target.value)}
+                  className="input"
+                >
+                  <option value="">Tous les collaborateurs</option>
+                  {collaborators.map((c) => (
+                    <option key={c.id} value={c.id}>{c.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label text-[10px] uppercase font-bold">Statut</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="input"
+                >
+                  <option value="">Tous les statuts</option>
+                  <option value="present">Présents</option>
+                  <option value="pause">En pause</option>
+                  <option value="departed">Partis</option>
+                  <option value="absent">Absents</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={fetchTeamData}
+                  disabled={loadingTeam}
+                  className="btn-primary flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                >
+                  {loadingTeam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Filter className="w-4 h-4" />}
+                  Filtrer
+                </button>
+
+                <button
+                  onClick={exportToCSV}
+                  disabled={teamHistory.length === 0}
+                  className="btn-secondary py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1"
+                  title="Exporter au format CSV"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Supervision Registre Table */}
           <div className="card">
-            <div className="card-header">
-              <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Historique de pointage (10 derniers jours)</h3>
+            <div className="card-header bg-slate-50/50 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+              <h2 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary-500" />
+                Supervision du Personnel ({teamHistory.length})
+              </h2>
             </div>
             <div className="card-body p-0">
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+              {loadingTeam ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
                 </div>
-              ) : history.length === 0 ? (
-                <p className="text-sm text-slate-400 dark:text-slate-600 italic text-center py-8">Aucun enregistrement de pointage.</p>
+              ) : teamHistory.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                  <p className="text-sm font-semibold">Aucun pointage trouvé avec les filtres actuels.</p>
+                </div>
               ) : (
                 <div className="table-container border-0 rounded-none shadow-none">
-                  <table className="table">
+                  <table className="table text-xs">
                     <thead>
                       <tr>
                         <th>Date</th>
+                        <th>Collaborateur</th>
+                        <th>Service</th>
                         <th>Arrivée</th>
-                        <th>Début Pause</th>
-                        <th>Fin Pause</th>
+                        <th>Pause</th>
+                        <th>Retour</th>
                         <th>Départ</th>
+                        <th>Durée</th>
                         <th>Statut</th>
-                        <th>Localisation</th>
+                        <th>Localisation & Précision</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {history.map((h) => (
-                        <tr key={h.id}>
+                      {teamHistory.map((item) => (
+                        <tr key={item.id}>
+                          <td>{format(new Date(item.date), 'dd/MM/yyyy')}</td>
                           <td className="font-bold text-slate-800 dark:text-white">
-                            {format(new Date(h.date), 'dd MMMM yyyy', { locale: fr })}
+                            {item.profile?.full_name || item.employee_name || 'Inconnu'}
                           </td>
-                          <td className="font-mono text-xs">{h.arrival_time ? format(new Date(h.arrival_time), 'HH:mm:ss') : '-'}</td>
-                          <td className="font-mono text-xs">{h.break_start ? format(new Date(h.break_start), 'HH:mm:ss') : '-'}</td>
-                          <td className="font-mono text-xs">{h.break_end ? format(new Date(h.break_end), 'HH:mm:ss') : '-'}</td>
-                          <td className="font-mono text-xs">{h.departure_time ? format(new Date(h.departure_time), 'HH:mm:ss') : '-'}</td>
-                          <td>{getStatusBadge(h.status)}</td>
-                          <td className="text-xs text-slate-400 truncate max-w-[150px]" title={h.gps_location || ''}>
-                            {h.gps_location || 'Néant (V1)'}
+                          <td>{item.profile?.service?.name || '-'}</td>
+                          <td className="font-mono">{item.arrival_time ? format(new Date(item.arrival_time), 'HH:mm:ss') : '-'}</td>
+                          <td className="font-mono">{item.break_start ? format(new Date(item.break_start), 'HH:mm:ss') : '-'}</td>
+                          <td className="font-mono">{item.break_end ? format(new Date(item.break_end), 'HH:mm:ss') : '-'}</td>
+                          <td className="font-mono">{item.departure_time ? format(new Date(item.departure_time), 'HH:mm:ss') : '-'}</td>
+                          <td className="font-semibold text-slate-700 dark:text-slate-300">{getDurationString(item)}</td>
+                          <td>{getStatusBadge(item.status)}</td>
+                          <td className="max-w-[200px] truncate" title={item.gps_location || ''}>
+                            {item.gps_location ? (
+                              <span className="flex items-center gap-1 text-primary-600 dark:text-primary-400">
+                                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                {item.gps_location}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-medium">Statique (V1)</span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -536,138 +1020,25 @@ export default function RHPage() {
             </div>
           </div>
         </div>
+      )}
 
-        {/* Permissions Requests and Form Column */}
-        <div className="space-y-6">
-          <div className="card">
-            <div className="card-header">
-              <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
-                <FileText className="w-5 h-5 text-primary-600" />
-                Demander une absence
-              </h3>
-            </div>
-            <form onSubmit={handlePermissionSubmit} className="card-body space-y-4">
-              <div>
-                <label className="label">Type de demande *</label>
-                <select
-                  value={permForm.type}
-                  onChange={(e) => setPermForm((p) => ({ ...p, type: e.target.value as any }))}
-                  className="input"
-                  required
-                >
-                  <option value="permission">Permission Exceptionnelle</option>
-                  <option value="absence">Absence Justifiée</option>
-                  <option value="leave">Congés Annuels</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="label">Motif / Justification *</label>
-                <textarea
-                  value={permForm.reason}
-                  onChange={(e) => setPermForm((p) => ({ ...p, reason: e.target.value }))}
-                  className="input min-h-[90px]"
-                  placeholder="Veuillez décrire le motif de votre absence..."
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Date de début *</label>
-                  <input
-                    type="date"
-                    value={permForm.start_date}
-                    onChange={(e) => setPermForm((p) => ({ ...p, start_date: e.target.value }))}
-                    className="input"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="label">Date de fin *</label>
-                  <input
-                    type="date"
-                    value={permForm.end_date}
-                    onChange={(e) => setPermForm((p) => ({ ...p, end_date: e.target.value }))}
-                    className="input"
-                    required
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingPerm}
-                className="btn-primary w-full py-2.5 rounded-xl text-xs mt-2"
-              >
-                {submittingPerm ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
-                Soumettre ma demande
-              </button>
-            </form>
-          </div>
-
-          {/* Personal permissions history log */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-primary-600" />
-                Vos demandes ({permissions.length})
-              </h3>
-            </div>
-            <div className="card-body p-4 space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin">
-              {permissions.length === 0 ? (
-                <p className="text-xs text-slate-400 dark:text-slate-600 italic text-center py-4">Aucune demande en cours.</p>
-              ) : (
-                permissions.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-3 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase text-primary-600 dark:text-primary-400">{p.type}</span>
-                      <span
-                        className={`badge ${
-                          p.status === 'pending'
-                            ? 'badge-warning'
-                            : p.status === 'approved'
-                              ? 'badge-success'
-                              : 'badge-danger'
-                        }`}
-                      >
-                        {p.status === 'pending' ? 'En attente' : p.status === 'approved' ? 'Approuvé' : 'Rejeté'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium line-clamp-2">{p.reason}</p>
-                    <div className="flex justify-between items-center text-[9px] text-slate-400 dark:text-slate-500 font-semibold border-t border-slate-100 dark:border-slate-800/60 pt-2">
-                      <span>Du {format(new Date(p.start_date), 'dd/MM')} au {format(new Date(p.end_date), 'dd/MM/yyyy')}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Pointage QR Code Modal */}
+      {/* Pointage QR Code Modal for Scanning auto point */}
       {urlToken && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/50 shadow-2xl p-6 max-w-md w-full rounded-3xl animate-scale-in space-y-6">
             
-            {/* 1. Status: Scanning/Processing */}
             {scanning && (
               <div className="text-center py-8 space-y-4">
                 <Loader2 className="w-12 h-12 text-primary-600 dark:text-primary-400 animate-spin mx-auto" />
                 <div>
                   <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">Pointage en cours...</h3>
                   <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-1">
-                    Enregistrement de votre heure et de votre position GPS en cours de validation...
+                    Validation de vos coordonnées et de votre heure sur Supabase...
                   </p>
                 </div>
               </div>
             )}
 
-            {/* 2. Status: Auto Point Success */}
             {!scanning && autoPointSuccess && (
               <div className="text-center py-6 space-y-5">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100 dark:border-emerald-800/30">
@@ -692,7 +1063,6 @@ export default function RHPage() {
               </div>
             )}
 
-            {/* 3. Status: Auto Point Error */}
             {!scanning && autoPointError && (
               <div className="text-center py-6 space-y-5">
                 <div className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-500 flex items-center justify-center mx-auto border border-rose-100 dark:border-rose-800/30">
@@ -715,101 +1085,6 @@ export default function RHPage() {
                   Fermer
                 </button>
               </div>
-            )}
-
-            {/* 4. Status: Normal flow (no auto action found or already completed for today) */}
-            {!scanning && !autoPointSuccess && !autoPointError && (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400">
-                    <QrCode className="w-6 h-6 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                      Pointage QR Code Détecté
-                    </h3>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                      Jeton : <span className="font-mono text-primary-500">{urlToken}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 dark:text-slate-500 uppercase font-semibold">Statut aujourd'hui</span>
-                    {presence ? getStatusBadge(presence.status) : <span className="badge badge-gray">Non pointé</span>}
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium mt-1">
-                    {presence?.departure_time 
-                      ? "Vous avez déjà clôturé votre journée de travail aujourd'hui. Aucun autre pointage n'est requis."
-                      : "Vous pouvez également choisir manuellement une action ci-dessous :"
-                    }
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {!presence ? (
-                    <button
-                      onClick={() => handlePointageSimulated('arrival', urlToken)}
-                      disabled={scanning}
-                      className="btn-primary w-full py-3 rounded-2xl text-xs font-bold"
-                    >
-                      <Clock className="w-4.5 h-4.5 mr-2" />
-                      Pointer l'Arrivée
-                    </button>
-                  ) : (
-                    <>
-                      {/* Break Start Button */}
-                      {!presence.break_start && !presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('break_start', urlToken)}
-                          disabled={scanning}
-                          className="btn-warning w-full py-3 rounded-2xl text-xs font-bold"
-                        >
-                          <Pause className="w-4.5 h-4.5 mr-2" />
-                          Début Pause
-                        </button>
-                      )}
-
-                      {/* Break End Button */}
-                      {presence.break_start && !presence.break_end && !presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('break_end', urlToken)}
-                          disabled={scanning}
-                          className="btn-success w-full py-3 rounded-2xl text-xs font-bold"
-                        >
-                          <Play className="w-4.5 h-4.5 mr-2" />
-                          Retour de Pause
-                        </button>
-                      )}
-
-                      {/* Check-Out Button */}
-                      {!presence.departure_time && (
-                        <button
-                          onClick={() => handlePointageSimulated('departure', urlToken)}
-                          disabled={scanning}
-                          className="btn-danger w-full py-3 rounded-2xl text-xs font-bold"
-                        >
-                          <RotateCcw className="w-4.5 h-4.5 mr-2" />
-                          Clôturer le Départ
-                        </button>
-                      )}
-                    </>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      setUrlToken(null);
-                      setAutoPointSuccess(null);
-                      setAutoPointError(null);
-                    }}
-                    disabled={scanning}
-                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all mt-1"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              </>
             )}
           </div>
         </div>

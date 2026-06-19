@@ -195,14 +195,22 @@ export interface Appointment {
 export interface HRPresence {
   id: string;
   user_id: string;
+  employee_name: string | null;
   date: string;
   arrival_time: string;
   break_start: string | null;
   break_end: string | null;
   departure_time: string | null;
+  status: 'present' | 'pause' | 'mission' | 'displacement' | 'absent' | 'leave' | 'permission' | 'departed';
   qr_code_token: string | null;
   gps_location: string | null;
-  status: 'present' | 'pause' | 'mission' | 'displacement' | 'absent' | 'leave' | 'permission';
+  check_in_latitude: number | null;
+  check_in_longitude: number | null;
+  check_out_latitude: number | null;
+  check_out_longitude: number | null;
+  location_accuracy: number | null;
+  device_info: string | null;
+  qr_code_version: string | null;
   created_at: string;
   updated_at: string;
   profile?: Profile;
@@ -243,6 +251,7 @@ export interface MedicalRequest {
   user_id: string;
   request_type: 'consultation' | 'sickness' | 'rest';
   symptoms: string;
+  attachments: string[] | null;
   nurse_opinion: string | null;
   prescription: string | null;
   rest_days_granted: number;
@@ -253,3 +262,94 @@ export interface MedicalRequest {
   updated_at: string;
   profile?: Profile;
 }
+
+export interface MedicalFile {
+  id: string;
+  user_id: string;
+  matricule: string | null;
+  gender: 'M' | 'F' | null;
+  birth_date: string | null;
+  blood_group: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  department: string | null;
+  position: string | null;
+  allergies: string | null;
+  vaccinations: string | null;
+  current_treatments: string | null;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface PharmacyProduct {
+  id: string;
+  name: string;
+  reference: string | null;
+  category: 'antalgiques' | 'antibiotiques' | 'antiseptiques' | 'pansements' | 'premiers_secours' | 'consommables' | 'autre';
+  quantity: number;
+  min_threshold: number;
+  expiration_date: string | null;
+  supplier: string | null;
+  location: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PharmacyMovement {
+  id: string;
+  product_id: string;
+  type: 'in' | 'out' | 'consumption' | 'adjustment';
+  quantity: number;
+  user_id: string | null;
+  notes: string | null;
+  created_at: string;
+  product?: PharmacyProduct;
+  profile?: Profile;
+}
+
+export interface MedicalAppointment {
+  id: string;
+  user_id: string;
+  date: string;
+  time: string;
+  purpose: 'consultation' | 'urgence' | 'periodique' | 'reprise';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: 'scheduled' | 'confirmed' | 'realized' | 'postponed' | 'cancelled';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface MedicalExam {
+  id: string;
+  user_id: string;
+  date: string;
+  exam_type: 'annual' | 'hiring' | 'return' | 'special';
+  result: string;
+  observations: string | null;
+  recommendations: string | null;
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+
+export interface MedicalRest {
+  id: string;
+  employee_id: string;
+  request_id: string | null;
+  slip_number: string | null;
+  delivery_date: string;
+  start_date: string;
+  end_date: string;
+  days_count: number;
+  motif: string;
+  nurse_validated_by: string | null;
+  rh_validated_by: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  updated_at: string;
+  profile?: Profile;
+}
+

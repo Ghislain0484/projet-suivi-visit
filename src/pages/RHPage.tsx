@@ -748,7 +748,26 @@ export default function RHPage() {
                             <td className="font-semibold text-slate-700 dark:text-slate-300">{getDurationString(h)}</td>
                             <td>{getStatusBadge(h.status)}</td>
                             <td className="text-xs text-slate-400 max-w-[150px] truncate" title={h.gps_location || ''}>
-                              {h.gps_location || 'Néant (V1)'}
+                              {h.gps_location ? (
+                                h.check_in_latitude ? (
+                                  <a
+                                    href={`https://www.google.com/maps/search/?api=1&query=${h.check_in_latitude},${h.check_in_longitude}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline font-bold"
+                                  >
+                                    <MapPin className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                                    {h.gps_location}
+                                  </a>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-primary-600 dark:text-primary-400">
+                                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                    {h.gps_location}
+                                  </span>
+                                )
+                              ) : (
+                                'Néant (V1)'
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1003,10 +1022,22 @@ export default function RHPage() {
                           <td>{getStatusBadge(item.status)}</td>
                           <td className="max-w-[200px] truncate" title={item.gps_location || ''}>
                             {item.gps_location ? (
-                              <span className="flex items-center gap-1 text-primary-600 dark:text-primary-400">
-                                <MapPin className="w-3.5 h-3.5 shrink-0" />
-                                {item.gps_location}
-                              </span>
+                              item.check_in_latitude ? (
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${item.check_in_latitude},${item.check_in_longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline font-bold"
+                                >
+                                  <MapPin className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                                  {item.gps_location}
+                                </a>
+                              ) : (
+                                <span className="flex items-center gap-1 text-primary-600 dark:text-primary-400">
+                                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                  {item.gps_location}
+                                </span>
+                              )
                             ) : (
                               <span className="text-slate-400 font-medium">Statique (V1)</span>
                             )}

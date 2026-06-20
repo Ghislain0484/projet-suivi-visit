@@ -355,5 +355,107 @@ DROP POLICY IF EXISTS "rests_all" ON public.medical_rests;
 CREATE POLICY "rests_select" ON public.medical_rests FOR SELECT TO authenticated USING (auth.uid() = employee_id OR public.get_user_role(auth.uid()) IN ('nurse', 'admin', 'director'));
 CREATE POLICY "rests_all" ON public.medical_rests FOR ALL TO authenticated USING (public.get_user_role(auth.uid()) IN ('nurse', 'admin', 'director'));
 
+-- M. Politiques de sécurité pour profiles (Correction définitive de la récursion RLS)
+DROP POLICY IF EXISTS "profiles_select" ON public.profiles;
+CREATE POLICY "profiles_select" ON public.profiles FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "profiles_update" ON public.profiles;
+CREATE POLICY "profiles_update" ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id OR public.get_user_role(auth.uid()) = 'admin');
+
+DROP POLICY IF EXISTS "profiles_insert" ON public.profiles;
+CREATE POLICY "profiles_insert" ON public.profiles FOR INSERT TO authenticated WITH CHECK (true);
+
+-- N. Politiques de sécurité pour services
+DROP POLICY IF EXISTS "services_select" ON public.services;
+CREATE POLICY "services_select" ON public.services FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "services_insert" ON public.services;
+CREATE POLICY "services_insert" ON public.services FOR INSERT TO authenticated WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+DROP POLICY IF EXISTS "services_update" ON public.services;
+CREATE POLICY "services_update" ON public.services FOR UPDATE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+DROP POLICY IF EXISTS "services_delete" ON public.services;
+CREATE POLICY "services_delete" ON public.services FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) = 'admin');
+
+-- O. Politiques de sécurité pour visitors
+DROP POLICY IF EXISTS "visitors_select" ON public.visitors;
+CREATE POLICY "visitors_select" ON public.visitors FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "visitors_insert" ON public.visitors;
+CREATE POLICY "visitors_insert" ON public.visitors FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "visitors_update" ON public.visitors;
+CREATE POLICY "visitors_update" ON public.visitors FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "visitors_delete" ON public.visitors;
+CREATE POLICY "visitors_delete" ON public.visitors FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+-- P. Politiques de sécurité pour visits
+DROP POLICY IF EXISTS "visits_select" ON public.visits;
+CREATE POLICY "visits_select" ON public.visits FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "visits_insert" ON public.visits;
+CREATE POLICY "visits_insert" ON public.visits FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "visits_update" ON public.visits;
+CREATE POLICY "visits_update" ON public.visits FOR UPDATE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception', 'service_manager', 'collaborator'));
+
+DROP POLICY IF EXISTS "visits_delete" ON public.visits;
+CREATE POLICY "visits_delete" ON public.visits FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+-- Q. Politiques de sécurité pour invoices
+DROP POLICY IF EXISTS "invoices_select" ON public.invoices;
+CREATE POLICY "invoices_select" ON public.invoices FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "invoices_insert" ON public.invoices;
+CREATE POLICY "invoices_insert" ON public.invoices FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "invoices_update" ON public.invoices;
+CREATE POLICY "invoices_update" ON public.invoices FOR UPDATE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'accounting', 'cashier'));
+
+DROP POLICY IF EXISTS "invoices_delete" ON public.invoices;
+CREATE POLICY "invoices_delete" ON public.invoices FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'accounting'));
+
+-- R. Politiques de sécurité pour visit_followups
+DROP POLICY IF EXISTS "followups_select" ON public.visit_followups;
+CREATE POLICY "followups_select" ON public.visit_followups FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "followups_insert" ON public.visit_followups;
+CREATE POLICY "followups_insert" ON public.visit_followups FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "followups_update" ON public.visit_followups;
+CREATE POLICY "followups_update" ON public.visit_followups FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "followups_delete" ON public.visit_followups;
+CREATE POLICY "followups_delete" ON public.visit_followups FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+-- S. Politiques de sécurité pour comments
+DROP POLICY IF EXISTS "comments_select" ON public.comments;
+CREATE POLICY "comments_select" ON public.comments FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "comments_insert" ON public.comments;
+CREATE POLICY "comments_insert" ON public.comments FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+-- T. Politiques de sécurité pour activity_logs
+DROP POLICY IF EXISTS "logs_select" ON public.activity_logs;
+CREATE POLICY "logs_select" ON public.activity_logs FOR SELECT TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+DROP POLICY IF EXISTS "logs_insert" ON public.activity_logs;
+CREATE POLICY "logs_insert" ON public.activity_logs FOR INSERT TO authenticated WITH CHECK (true);
+
+-- U. Politiques de sécurité pour service_items
+DROP POLICY IF EXISTS "service_items_select" ON public.service_items;
+CREATE POLICY "service_items_select" ON public.service_items FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "service_items_insert" ON public.service_items;
+CREATE POLICY "service_items_insert" ON public.service_items FOR INSERT TO authenticated WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+DROP POLICY IF EXISTS "service_items_update" ON public.service_items;
+CREATE POLICY "service_items_update" ON public.service_items FOR UPDATE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director'));
+
+DROP POLICY IF EXISTS "service_items_delete" ON public.service_items;
+CREATE POLICY "service_items_delete" ON public.service_items FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) = 'admin');
+
 -- Rechargement obligatoire de PostgREST
 NOTIFY pgrst, 'reload schema';

@@ -89,7 +89,7 @@ export default function UsersListPage() {
         if (authError) throw authError;
 
         if (authData.user) {
-          await supabase.from('profiles').insert({
+          const { error: profileError } = await supabase.from('profiles').upsert({
             id: authData.user.id,
             email: form.email,
             full_name: form.full_name,
@@ -98,6 +98,7 @@ export default function UsersListPage() {
             phone: form.phone || null,
             is_active: form.is_active,
           });
+          if (profileError) throw profileError;
         }
       }
 

@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (data.user) {
       const roleHierarchy: UserRole[] = ['admin', 'director', 'service_manager', 'accounting', 'reception'];
-      const { error: profileError } = await supabase.from('profiles').insert({
+      const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
         email,
         full_name: fullName,

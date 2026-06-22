@@ -19,3 +19,19 @@ DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
 CREATE POLICY "notifications_insert" ON public.notifications 
 FOR INSERT TO authenticated 
 WITH CHECK (true);
+
+-- 3. Mise à jour de la politique RLS profiles pour autoriser le Directeur Général à gérer les profils sans modifier les admins
+DROP POLICY IF EXISTS "profiles_update" ON public.profiles;
+CREATE POLICY "profiles_update" ON public.profiles 
+FOR UPDATE TO authenticated 
+USING (
+  auth.uid() = id 
+  OR public.get_user_role(auth.uid()) = 'admin'
+  OR (public.get_user_role(auth.uid()) = 'director' AND role <> 'admin')
+)
+WITH CHECK (
+  (auth.uid() = id AND role = public.get_user_role(auth.uid()))
+  OR public.get_user_role(auth.uid()) = 'admin'
+  OR (public.get_user_role(auth.uid()) = 'director' AND role <> 'admin')
+);
+

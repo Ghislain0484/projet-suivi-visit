@@ -40,8 +40,8 @@ const navItems = [
   { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager'] },
   { path: '/invoices', label: 'Facturation', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier'] },
   { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director'] },
-  { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin'] },
-  { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin'] },
+  { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin', 'director'] },
+  { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin', 'director'] },
 ];
 
 export default function Layout() {

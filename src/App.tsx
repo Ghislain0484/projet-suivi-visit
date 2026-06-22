@@ -113,7 +113,7 @@ function App() {
             <Route
               path="users"
               element={
-                <AuthGuard requiredRoles={['admin']}>
+                <AuthGuard requiredRoles={['admin', 'director']}>
                   <UsersListPage />
                 </AuthGuard>
               }
@@ -123,7 +123,7 @@ function App() {
             <Route
               path="settings"
               element={
-                <AuthGuard requiredRoles={['admin']}>
+                <AuthGuard requiredRoles={['admin', 'director']}>
                   <SettingsPage />
                 </AuthGuard>
               }

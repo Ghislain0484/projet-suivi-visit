@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, Profile, Service, UserRole } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function UsersListPage() {
+  const { profile } = useAuth();
 
   const [users, setUsers] = useState<Profile[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -251,12 +253,14 @@ export default function UsersListPage() {
                     <span className={`badge ${getRoleColor(user.role)}`}>{getRoleLabel(user.role)}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => openEditForm(user)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <Edit className="w-4 h-4 text-gray-600" />
-                </button>
+                {!(profile?.role === 'director' && user.role === 'admin') && (
+                  <button
+                    onClick={() => openEditForm(user)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <Edit className="w-4 h-4 text-gray-600" />
+                  </button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -352,7 +356,7 @@ export default function UsersListPage() {
                   className="input"
                   required
                 >
-                  <option value="admin">Administrateur</option>
+                  {profile?.role === 'admin' && <option value="admin">Administrateur</option>}
                   <option value="director">Directeur General</option>
                   <option value="service_manager">Responsable Service</option>
                   <option value="accounting">Comptabilite</option>
@@ -397,6 +401,7 @@ export default function UsersListPage() {
                       type="radio"
                       checked={form.is_active}
                       onChange={() => setForm((p) => ({ ...p, is_active: true }))}
+                      disabled={profile?.role === 'director'}
                       className="w-4 h-4"
                     />
                     <span className="text-sm flex items-center gap-1">
@@ -409,6 +414,7 @@ export default function UsersListPage() {
                       type="radio"
                       checked={!form.is_active}
                       onChange={() => setForm((p) => ({ ...p, is_active: false }))}
+                      disabled={profile?.role === 'director'}
                       className="w-4 h-4"
                     />
                     <span className="text-sm flex items-center gap-1">

@@ -93,7 +93,7 @@ function App() {
             <Route
               path="invoices"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'accounting']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier']}>
                   <InvoicesListPage />
                 </AuthGuard>
               }

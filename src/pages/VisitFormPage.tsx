@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { supabase, Service, Visitor, VisitorType } from '../lib/supabase';
+import { supabase, Service, Visitor, VisitorType, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Save,
@@ -29,6 +29,7 @@ export default function VisitFormPage() {
   const [existingVisitors, setExistingVisitors] = useState<Visitor[]>([]);
   const [showVisitorSearch, setShowVisitorSearch] = useState(false);
   const [visitorSearch, setVisitorSearch] = useState('');
+  const [collaborators, setCollaborators] = useState<Profile[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -46,13 +47,29 @@ export default function VisitFormPage() {
     purpose: '',
     has_appointment: false,
     person_to_meet: '',
+    assigned_collaborator_id: '',
     service_id: '',
     comments: '',
   });
 
+  const getRoleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      admin: 'Administrateur',
+      director: 'Directeur Général',
+      reception: 'Réception / Secrétariat',
+      service_manager: 'Responsable Service',
+      accounting: 'Comptabilité',
+      cashier: 'Caissier / Caisse',
+      collaborator: 'Collaborateur',
+      nurse: 'Infirmier / Santé',
+    };
+    return labels[role] || role;
+  };
+
   useEffect(() => {
     fetchServices();
     fetchExistingVisitors();
+    fetchCollaborators();
     if (isEditing) {
       fetchVisit();
     }
@@ -66,6 +83,11 @@ export default function VisitFormPage() {
   const fetchExistingVisitors = async () => {
     const { data } = await supabase.from('visitors').select('*').order('last_name').limit(100);
     if (data) setExistingVisitors(data);
+  };
+
+  const fetchCollaborators = async () => {
+    const { data } = await supabase.from('profiles').select('*').eq('is_active', true).order('full_name');
+    if (data) setCollaborators(data);
   };
 
   const fetchVisit = async () => {
@@ -90,6 +112,7 @@ export default function VisitFormPage() {
         purpose: data.purpose,
         has_appointment: data.has_appointment,
         person_to_meet: data.person_to_meet || '',
+        assigned_collaborator_id: data.assigned_collaborator_id || '',
         service_id: data.service_id || '',
         comments: data.comments || '',
       });
@@ -175,6 +198,7 @@ export default function VisitFormPage() {
         purpose: formData.purpose,
         has_appointment: formData.has_appointment,
         person_to_meet: formData.person_to_meet || null,
+        assigned_collaborator_id: formData.assigned_collaborator_id || null,
         service_id: formData.service_id || null,
         comments: formData.comments || null,
         created_by: user?.id,
@@ -187,8 +211,24 @@ export default function VisitFormPage() {
           .eq('id', id);
         if (updateError) throw new Error(updateError.message);
       } else {
-        const { error: insertError } = await supabase.from('visits').insert(visitData);
+        const { data: newVisit, error: insertError } = await supabase
+          .from('visits')
+          .insert(visitData)
+          .select()
+          .single();
         if (insertError) throw new Error(insertError.message);
+
+        // Send notification to the collaborator
+        if (visitData.assigned_collaborator_id) {
+          await supabase.from('notifications').insert({
+            user_id: visitData.assigned_collaborator_id,
+            title: 'Nouveau visiteur attribué',
+            message: `Le visiteur ${formData.first_name} ${formData.last_name} (${formData.company || 'Sans entreprise'}) souhaite vous voir pour : ${formData.purpose}.`,
+            type: 'info',
+            link: `/visits/${newVisit.id}`,
+            is_read: false
+          });
+        }
       }
 
       // Log activity
@@ -555,20 +595,33 @@ export default function VisitFormPage() {
               </div>
 
               <div>
-                <label htmlFor="person_to_meet" className="label">
+                <label htmlFor="assigned_collaborator_id" className="label">
                   Collaborateur à rencontrer
                 </label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
-                  <input
-                    id="person_to_meet"
-                    name="person_to_meet"
-                    type="text"
-                    value={formData.person_to_meet}
-                    onChange={handleInputChange}
+                  <select
+                    id="assigned_collaborator_id"
+                    name="assigned_collaborator_id"
+                    value={formData.assigned_collaborator_id}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const selectedCollab = collaborators.find(c => c.id === selectedId);
+                      setFormData((prev) => ({
+                        ...prev,
+                        assigned_collaborator_id: selectedId,
+                        person_to_meet: selectedCollab ? selectedCollab.full_name : '',
+                      }));
+                    }}
                     className="input pl-11"
-                    placeholder="Nom du collaborateur"
-                  />
+                  >
+                    <option value="">Sélectionnez un collaborateur...</option>
+                    {collaborators.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.full_name} ({getRoleLabel(c.role)})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>

@@ -226,6 +226,8 @@ export default function UsersListPage() {
             <option value="accounting">Comptabilite</option>
             <option value="cashier">Caissier / Caisse</option>
             <option value="reception">Reception</option>
+            <option value="collaborator">Collaborateur</option>
+            <option value="nurse">Infirmier</option>
           </select>
         </div>
       </div>
@@ -356,6 +358,8 @@ export default function UsersListPage() {
                   <option value="accounting">Comptabilite</option>
                   <option value="cashier">Caissier / Caisse</option>
                   <option value="reception">Reception</option>
+                  <option value="collaborator">Collaborateur</option>
+                  <option value="nurse">Infirmier / Santé</option>
                 </select>
               </div>
 

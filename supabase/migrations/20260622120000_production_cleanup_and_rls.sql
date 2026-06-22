@@ -4,8 +4,12 @@
 -- =======================================================
 
 -- 1. Nettoyage sélectif des données de démonstration/test (UUIDs en séries fixes)
-DELETE FROM public.visit_followups WHERE id::text LIKE '44444444-%';
-DELETE FROM public.invoices WHERE id::text LIKE '33333333-%';
+-- Suppression dans le bon ordre pour respecter les clés étrangères
+DELETE FROM public.comments WHERE visit_id::text LIKE '22222222-%';
+DELETE FROM public.visit_followups WHERE id::text LIKE '44444444-%' OR visit_id::text LIKE '22222222-%';
+DELETE FROM public.invoice_items WHERE invoice_id IN (SELECT id FROM public.invoices WHERE visit_id::text LIKE '22222222-%');
+DELETE FROM public.invoices WHERE id::text LIKE '33333333-%' OR visit_id::text LIKE '22222222-%';
+DELETE FROM public.appointments WHERE visit_id::text LIKE '22222222-%';
 DELETE FROM public.visits WHERE id::text LIKE '22222222-%';
 DELETE FROM public.visitors WHERE id::text LIKE '11111111-%';
 

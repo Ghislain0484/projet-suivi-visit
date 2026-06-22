@@ -153,6 +153,7 @@ export default function UsersListPage() {
       cashier: 'Caissier / Caisse',
       collaborator: 'Collaborateur',
       nurse: 'Infirmier / Santé',
+      lawyer: 'Juriste Externe',
     };
     return labels[role] || role;
   };
@@ -167,6 +168,7 @@ export default function UsersListPage() {
       cashier: 'bg-emerald-100 text-emerald-700',
       collaborator: 'bg-indigo-100 text-indigo-700',
       nurse: 'bg-teal-100 text-teal-700',
+      lawyer: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/20 dark:text-cyan-400 border border-cyan-200/20',
     };
     return colors[role] || colors.reception;
   };
@@ -237,6 +239,7 @@ export default function UsersListPage() {
             <option value="reception">Reception</option>
             <option value="collaborator">Collaborateur</option>
             <option value="nurse">Infirmier</option>
+            <option value="lawyer">Juriste Externe</option>
           </select>
         </div>
       </div>
@@ -375,6 +378,7 @@ export default function UsersListPage() {
                   <option value="reception">Reception</option>
                   <option value="collaborator">Collaborateur</option>
                   <option value="nurse">Infirmier / Santé</option>
+                  <option value="lawyer">Juriste Externe</option>
                 </select>
               </div>
 
@@ -403,9 +407,9 @@ export default function UsersListPage() {
                   required
                 >
                   <option value="Siège (Bonoua)">Siège (Bonoua)</option>
-                  <option value="Succursale Grand-Bassam">Succursale Grand-Bassam</option>
-                  <option value="Succursale Abidjan">Succursale Abidjan</option>
-                  <option value="Succursale Assinie">Succursale Assinie</option>
+                  <option value="GICO 8 Kilos">GICO 8 Kilos</option>
+                  <option value="GICO MOROKRO">GICO MOROKRO</option>
+                  <option value="GICO ABOISSO COMOE">GICO ABOISSO COMOE</option>
                 </select>
               </div>
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem } from '../lib/supabase';
+import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Trash2,
   MapPin,
+  Loader2,
 } from 'lucide-react';
 
 export default function VisitDetailPage() {
@@ -40,6 +41,14 @@ export default function VisitDetailPage() {
   const [treatmentReport, setTreatmentReport] = useState('');
   const [closingStatus, setClosingStatus] = useState('traite');
   const [savingTreatment, setSavingTreatment] = useState(false);
+  
+  // Attachments and Access control states
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [lawyers, setLawyers] = useState<Profile[]>([]);
+  const [visitAccessUserIds, setVisitAccessUserIds] = useState<string[]>([]);
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   // Billing and Payment states
   const [catalogItems, setCatalogItems] = useState<ServiceItem[]>([]);
@@ -100,6 +109,7 @@ export default function VisitDetailPage() {
       setVisit(visitData);
       setTreatmentObservations(visitData.observations || '');
       setTreatmentReport(visitData.report || '');
+      setAttachments(visitData.attachments || []);
       if (visitData.status === 'en_cours' || visitData.status === 'in_progress') {
         setClosingStatus('traite');
       } else {
@@ -157,6 +167,22 @@ export default function VisitDetailPage() {
         .eq('visit_id', id)
         .order('created_at', { ascending: true });
       if (commentsData) setComments(commentsData);
+
+      // Fetch visit access details and lawyers
+      const { data: accessData } = await supabase
+        .from('visit_access')
+        .select('user_id')
+        .eq('visit_id', id);
+      if (accessData) {
+        setVisitAccessUserIds(accessData.map((a: any) => a.user_id));
+      }
+
+      const { data: lawyersData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'lawyer')
+        .eq('is_active', true);
+      if (lawyersData) setLawyers(lawyersData);
     }
     setLoading(false);
   };
@@ -468,6 +494,7 @@ export default function VisitDetailPage() {
       cashier: 'Caissier / Caisse',
       collaborator: 'Collaborateur',
       nurse: 'Infirmier',
+      lawyer: 'Juriste Externe',
     };
     return labels[role] || role;
   };
@@ -484,12 +511,208 @@ export default function VisitDetailPage() {
       annule: { label: 'Annulé', class: 'badge-danger', dot: 'dot-pulse-danger' },
     };
     const current = config[status as keyof typeof config] || { label: status, class: 'badge-gray', dot: 'bg-slate-400' };
+    
     return (
       <span className={`${current.class} flex items-center gap-1.5`}>
         <span className={`${current.dot} w-2 h-2 rounded-full`} />
         {current.label}
       </span>
     );
+  };
+
+  const hasAttachmentAccess = (): boolean => {
+    if (!profile || !visit) return false;
+    
+    // Admin, Director, Reception can always view attachments
+    if (['admin', 'director', 'reception'].includes(profile.role)) {
+      return true;
+    }
+    
+    // Creator or assignee can view attachments
+    if (visit.created_by === profile.id || visit.assigned_collaborator_id === profile.id) {
+      return true;
+    }
+    
+    // If visibility is public to all, standard collaborators (not lawyers) can view
+    if (visit.attachments_visible_to_all && profile.role !== 'lawyer') {
+      return true;
+    }
+    
+    // Lawyers or other users check visit_access
+    if (visitAccessUserIds.includes(profile.id)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleToggleVisibility = async () => {
+    if (!visit || !profile) return;
+    setTogglingVisibility(true);
+    const newValue = !visit.attachments_visible_to_all;
+    
+    const { error } = await supabase
+      .from('visits')
+      .update({ attachments_visible_to_all: newValue })
+      .eq('id', visit.id);
+      
+    if (!error) {
+      setVisit(prev => prev ? { ...prev, attachments_visible_to_all: newValue } : null);
+      
+      await supabase.from('activity_logs').insert({
+        user_id: user?.id,
+        action: 'TOGGLE_ATTACHMENT_VISIBILITY',
+        entity_type: 'visit',
+        entity_id: visit.id,
+        details: { attachments_visible_to_all: newValue },
+      });
+      
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user?.id,
+        content: `🔒 Les pièces jointes sont désormais ${newValue ? 'PUBLIQUES (visibles par tous)' : 'PRIVÉES (accès restreint)'}.`,
+      });
+      
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la modification de la visibilité: " + error.message);
+    }
+    setTogglingVisibility(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !visit) return;
+    setUploading(true);
+
+    const newAttachments = [...attachments];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `visit-docs/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        alert(`Erreur d'upload: ${uploadError.message}`);
+        continue;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('attachments')
+        .getPublicUrl(filePath);
+
+      if (publicUrl) {
+        newAttachments.push(publicUrl);
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('visits')
+      .update({ attachments: newAttachments })
+      .eq('id', visit.id);
+
+    if (!updateError) {
+      setAttachments(newAttachments);
+      
+      await supabase.from('activity_logs').insert({
+        user_id: user?.id,
+        action: 'UPLOAD_ATTACHMENT',
+        entity_type: 'visit',
+        entity_id: visit.id,
+        details: { count: files.length },
+      });
+      
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user?.id,
+        content: `📎 ${files.length} pièce(s) jointe(s) ajoutée(s).`,
+      });
+      
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la mise à jour des pièces jointes : " + updateError.message);
+    }
+
+    setUploading(false);
+  };
+
+  const removeAttachment = async (indexToRemove: number) => {
+    if (!visit) return;
+    const newAttachments = attachments.filter((_, idx) => idx !== indexToRemove);
+
+    const { error: updateError } = await supabase
+      .from('visits')
+      .update({ attachments: newAttachments })
+      .eq('id', visit.id);
+
+    if (!updateError) {
+      setAttachments(newAttachments);
+      
+      await supabase.from('comments').insert({
+        visit_id: visit.id,
+        user_id: user?.id,
+        content: `🗑️ Une pièce jointe a été supprimée.`,
+      });
+      
+      fetchVisit();
+    } else {
+      alert("Erreur lors de la suppression : " + updateError.message);
+    }
+  };
+
+  const handleToggleLawyerAccess = async (lawyerId: string) => {
+    if (!visit) return;
+    setSavingAccess(true);
+    
+    const isGranted = visitAccessUserIds.includes(lawyerId);
+    
+    if (isGranted) {
+      const { error } = await supabase
+        .from('visit_access')
+        .delete()
+        .eq('visit_id', visit.id)
+        .eq('user_id', lawyerId);
+        
+      if (!error) {
+        setVisitAccessUserIds(prev => prev.filter(id => id !== lawyerId));
+        
+        const lawyerName = lawyers.find(l => l.id === lawyerId)?.full_name || 'Juriste';
+        await supabase.from('comments').insert({
+          visit_id: visit.id,
+          user_id: user?.id,
+          content: `🔏 Accès au dossier révoqué pour le juriste ${lawyerName}.`,
+        });
+      } else {
+        alert("Erreur de révocation : " + error.message);
+      }
+    } else {
+      const { error } = await supabase
+        .from('visit_access')
+        .insert({
+          visit_id: visit.id,
+          user_id: lawyerId,
+          granted_by: user?.id
+        });
+        
+      if (!error) {
+        setVisitAccessUserIds(prev => [...prev, lawyerId]);
+        
+        const lawyerName = lawyers.find(l => l.id === lawyerId)?.full_name || 'Juriste';
+        await supabase.from('comments').insert({
+          visit_id: visit.id,
+          user_id: user?.id,
+          content: `🔑 Accès au dossier accordé au juriste ${lawyerName}.`,
+        });
+      } else {
+        alert("Erreur d'octroi d'accès : " + error.message);
+      }
+    }
+    setSavingAccess(false);
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -821,6 +1044,204 @@ export default function VisitDetailPage() {
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 sm:col-span-2">
                   <p className="label">Observations d'accueil</p>
                   <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed bg-slate-50/50 dark:bg-slate-950/40 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800/60 font-medium">{visit.comments}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Attachments Section */}
+          <div className="card">
+            <div className="card-header flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                <FileText className="w-4.5 h-4.5 text-slate-400" />
+                Documents & Pièces Jointes
+              </h2>
+              {hasAttachmentAccess() && (
+                <span className="text-xs text-slate-400 dark:text-slate-500">
+                  {attachments.length} document(s)
+                </span>
+              )}
+            </div>
+            
+            <div className="card-body space-y-6">
+              {/* Privacy Status & DG/Admin Visibility Toggle */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/80">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                    {visit.attachments_visible_to_all ? (
+                      <>
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Visibilité Publique Active
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                        Accès Confidentiel (Restreint)
+                      </>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-normal">
+                    {visit.attachments_visible_to_all 
+                      ? "Tous les collaborateurs autorisés à voir cette visite peuvent consulter ces documents."
+                      : "Seuls l'administrateur, le Directeur Général, l'assistante de direction (réception), le créateur, l'assigné et les juristes autorisés peuvent consulter."}
+                  </p>
+                </div>
+
+                {profile && ['admin', 'director'].includes(profile.role) && (
+                  <button
+                    onClick={handleToggleVisibility}
+                    disabled={togglingVisibility}
+                    className={`btn-secondary text-xs py-2 px-4 flex items-center gap-2 shadow-sm ${
+                      visit.attachments_visible_to_all 
+                        ? 'border-rose-200/50 dark:border-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20' 
+                        : 'border-emerald-200/50 dark:border-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
+                    }`}
+                  >
+                    {togglingVisibility ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : visit.attachments_visible_to_all ? (
+                      "Rendre Privé"
+                    ) : (
+                      "Rendre Public pour tous"
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {hasAttachmentAccess() ? (
+                <>
+                  {/* Upload Interface (Authorized users can upload, receptionist, admin, director, assignee, creator) */}
+                  {profile && ['admin', 'director', 'reception', visit.created_by, visit.assigned_collaborator_id].includes(profile.role) && (
+                    <div>
+                      <div className="flex items-center justify-center w-full">
+                        <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-2xl cursor-pointer bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-950/40 transition-colors">
+                          <div className="flex flex-col items-center justify-center pt-4 pb-4">
+                            {uploading ? (
+                              <Loader2 className="w-7 h-7 text-primary-500 animate-spin" />
+                            ) : (
+                              <svg className="w-7 h-7 text-slate-400 dark:text-slate-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                              </svg>
+                            )}
+                            <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                              {uploading ? "Téléversement..." : "Cliquez ou glissez-déposez pour ajouter des pièces jointes"}
+                            </p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                              PNG, JPG, PDF (Max. 10 Mo)
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={handleFileUpload}
+                            disabled={uploading}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attachment Files List */}
+                  {attachments.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {attachments.map((url, index) => {
+                        const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || `Document_${index + 1}`;
+                        const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)/i);
+
+                        return (
+                          <div key={index} className="flex items-center justify-between p-3.5 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-200/50 dark:border-slate-800/80 rounded-2xl hover:shadow-sm transition-shadow">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              {isImage ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="block flex-shrink-0 cursor-zoom-in">
+                                  <img src={url} alt="Aperçu" className="w-12 h-12 object-cover rounded-xl border border-slate-200 dark:border-slate-800 shadow-inner" />
+                                </a>
+                              ) : (
+                                <div className="w-12 h-12 bg-primary-50 dark:bg-primary-950/40 rounded-xl flex items-center justify-center border border-primary-100/10 flex-shrink-0 shadow-inner">
+                                  <span className="text-xs font-bold text-primary-700 dark:text-primary-400">PDF</span>
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{fileName}</p>
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary-600 dark:text-primary-400 font-semibold hover:underline mt-0.5 inline-block">
+                                  Visualiser le document
+                                </a>
+                              </div>
+                            </div>
+                            
+                            {profile && ['admin', 'director', 'reception', visit.created_by, visit.assigned_collaborator_id].includes(profile.role) && (
+                              <button
+                                type="button"
+                                onClick={() => removeAttachment(index)}
+                                className="p-2 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-450 rounded-xl transition-colors"
+                                title="Supprimer ce fichier"
+                              >
+                                <Trash2 className="w-4.5 h-4.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-slate-50/30 dark:bg-slate-950/10 rounded-2xl border border-slate-100/80 dark:border-slate-800/40">
+                      <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">Aucun document joint à cette visite</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-10 bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-2">
+                  <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto animate-pulse" />
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-white">Fichiers Confidentiels</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    Les pièces jointes de cette visite sont privées. Seuls les utilisateurs et juristes dûment autorisés peuvent y accéder.
+                  </p>
+                </div>
+              )}
+
+              {/* Access Delegation Panel (Only for DG and Admin) */}
+              {profile && ['admin', 'director'].includes(profile.role) && lawyers.length > 0 && (
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                      Délégation d'accès (Juristes de l'entreprise)
+                    </h3>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-normal">
+                      Cochez les juristes autorisés à consulter ce dossier client/visiteur en toute confidentialité.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {lawyers.map((lawyer) => {
+                      const isGranted = visitAccessUserIds.includes(lawyer.id);
+                      return (
+                        <label
+                          key={lawyer.id}
+                          className={`flex items-center gap-3 p-3 bg-white dark:bg-slate-900 border rounded-2xl cursor-pointer hover:shadow-sm transition-all duration-200 select-none ${
+                            isGranted 
+                              ? 'border-primary-500/50 bg-primary-50/10 dark:bg-primary-950/10' 
+                              : 'border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isGranted}
+                            disabled={savingAccess}
+                            onChange={() => handleToggleLawyerAccess(lawyer.id)}
+                            className="w-4 h-4 text-primary-600 rounded border-slate-300 dark:border-slate-700 focus:ring-primary-500"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 dark:text-white truncate">
+                              {lawyer.full_name}
+                            </p>
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider truncate mt-0.5">
+                              {(lawyer as any).branch || 'Siège'}
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

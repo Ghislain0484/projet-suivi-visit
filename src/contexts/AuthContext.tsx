@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log("Profile not found or error, attempting auto-create:", selectError);
             const fallbackFullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Collaborateur';
             const fallbackRole = (session.user.user_metadata?.role || 'collaborator') as UserRole;
-            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
+            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'];
             const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
 
             const { data: newProfile, error: insertError } = await withTimeout(
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log("Profile not found or error, attempting auto-create on auth change:", selectError);
             const fallbackFullName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Collaborateur';
             const fallbackRole = (session.user.user_metadata?.role || 'collaborator') as UserRole;
-            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'];
+            const validRoles = ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'];
             const checkedRole = validRoles.includes(fallbackRole) ? fallbackRole : 'collaborator';
 
             const { data: newProfile, error: insertError } = await withTimeout(

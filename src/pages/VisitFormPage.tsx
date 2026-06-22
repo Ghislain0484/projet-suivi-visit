@@ -30,6 +30,8 @@ export default function VisitFormPage() {
   const [showVisitorSearch, setShowVisitorSearch] = useState(false);
   const [visitorSearch, setVisitorSearch] = useState('');
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -63,6 +65,7 @@ export default function VisitFormPage() {
       cashier: 'Caissier / Caisse',
       collaborator: 'Collaborateur',
       nurse: 'Infirmier / Santé',
+      lawyer: 'Juriste Externe',
     };
     return labels[role] || role;
   };
@@ -116,8 +119,10 @@ export default function VisitFormPage() {
         assigned_collaborator_id: data.assigned_collaborator_id || '',
         service_id: data.service_id || '',
         comments: data.comments || '',
-        branch: data.branch || 'Siège (Bonoua)',
       });
+      if (data.attachments) {
+        setAttachments(data.attachments);
+      }
     }
     setLoading(false);
   };
@@ -145,6 +150,45 @@ export default function VisitFormPage() {
     }));
     setShowVisitorSearch(false);
     setVisitorSearch('');
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+
+    const newAttachments = [...attachments];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `visit-docs/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        alert(`Erreur d'upload: ${uploadError.message}`);
+        continue;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('attachments')
+        .getPublicUrl(filePath);
+
+      if (publicUrl) {
+        newAttachments.push(publicUrl);
+      }
+    }
+
+    setAttachments(newAttachments);
+    setUploading(false);
+  };
+
+  const removeAttachment = (indexToRemove: number) => {
+    setAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,6 +249,7 @@ export default function VisitFormPage() {
         comments: formData.comments || null,
         branch: formData.branch,
         created_by: user?.id,
+        attachments: attachments,
       };
 
       if (isEditing) {
@@ -566,9 +611,9 @@ export default function VisitFormPage() {
                   required
                 >
                   <option value="Siège (Bonoua)">Siège (Bonoua)</option>
-                  <option value="Succursale Grand-Bassam">Succursale Grand-Bassam</option>
-                  <option value="Succursale Abidjan">Succursale Abidjan</option>
-                  <option value="Succursale Assinie">Succursale Assinie</option>
+                  <option value="GICO 8 Kilos">GICO 8 Kilos</option>
+                  <option value="GICO MOROKRO">GICO MOROKRO</option>
+                  <option value="GICO ABOISSO COMOE">GICO ABOISSO COMOE</option>
                 </select>
               </div>
             </div>
@@ -662,6 +707,83 @@ export default function VisitFormPage() {
                 placeholder="Ajoutez des observations (ex: Bagages, Dossier physique manquant...)"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Attachments Section */}
+        <div className="card">
+          <div className="card-header flex items-center justify-between">
+            <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Documents & Pièces Jointes</h2>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Scanners, photos, contrats...</span>
+          </div>
+          <div className="card-body space-y-4">
+            <div>
+              <label className="label">Ajouter des fichiers</label>
+              <div className="flex items-center justify-center w-full">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-2xl cursor-pointer bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-100/50 dark:hover:bg-slate-900/60 transition-colors">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    {uploading ? (
+                      <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+                    ) : (
+                      <svg className="w-8 h-8 text-slate-400 dark:text-slate-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    )}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                      {uploading ? "Téléversement en cours..." : "Cliquez ou glissez-déposez pour uploader un fichier"}
+                    </p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                      PNG, JPG, PDF (Max. 10 Mo par fichier)
+                    </p>
+                  </div>
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {attachments.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                {attachments.map((url, index) => {
+                  const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || `Document_${index + 1}`;
+                  const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)/i);
+
+                  return (
+                    <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isImage ? (
+                          <img src={url} alt="Aperçu" className="w-10 h-10 object-cover rounded-lg border border-slate-200 dark:border-slate-800" />
+                        ) : (
+                          <div className="w-10 h-10 bg-primary-50 dark:bg-primary-950/40 rounded-lg flex items-center justify-center border border-primary-100/10">
+                            <span className="text-xs font-bold text-primary-700 dark:text-primary-400">PDF</span>
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{fileName}</p>
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary-600 dark:text-primary-400 hover:underline">
+                            Visualiser
+                          </a>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                      >
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

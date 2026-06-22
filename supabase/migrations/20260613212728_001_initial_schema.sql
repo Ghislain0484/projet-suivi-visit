@@ -134,46 +134,46 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for services
 CREATE POLICY "services_select" ON services FOR SELECT TO authenticated USING (true);
-CREATE POLICY "services_insert" ON services FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
-CREATE POLICY "services_update" ON services FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
-CREATE POLICY "services_delete" ON services FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "services_insert" ON services FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
+CREATE POLICY "services_update" ON services FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
+CREATE POLICY "services_delete" ON services FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
 
 -- RLS Policies for profiles
 CREATE POLICY "profiles_select" ON profiles FOR SELECT TO authenticated USING (true);
 CREATE POLICY "profiles_insert" ON profiles FOR INSERT WITH CHECK (true);
-CREATE POLICY "profiles_update" ON profiles FOR UPDATE TO authenticated USING (auth.uid() = id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "profiles_update" ON profiles FOR UPDATE TO authenticated USING (auth.uid() = id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
 
 -- RLS Policies for visitors
 CREATE POLICY "visitors_select" ON visitors FOR SELECT TO authenticated USING (true);
 CREATE POLICY "visitors_insert" ON visitors FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "visitors_update" ON visitors FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "visitors_delete" ON visitors FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
+CREATE POLICY "visitors_delete" ON visitors FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
 
 -- RLS Policies for visits
 CREATE POLICY "visits_select" ON visits FOR SELECT TO authenticated USING (true);
 CREATE POLICY "visits_insert" ON visits FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "visits_update" ON visits FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "visits_delete" ON visits FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
+CREATE POLICY "visits_delete" ON visits FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
 
 -- RLS Policies for invoices
 CREATE POLICY "invoices_select" ON invoices FOR SELECT TO authenticated USING (true);
 CREATE POLICY "invoices_insert" ON invoices FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "invoices_update" ON invoices FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "invoices_delete" ON invoices FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director', 'accounting')));
+CREATE POLICY "invoices_delete" ON invoices FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director', 'accounting')));
 
 -- RLS Policies for visit_followups
 CREATE POLICY "followups_select" ON visit_followups FOR SELECT TO authenticated USING (true);
 CREATE POLICY "followups_insert" ON visit_followups FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "followups_update" ON visit_followups FOR UPDATE TO authenticated USING (true);
-CREATE POLICY "followups_delete" ON visit_followups FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
+CREATE POLICY "followups_delete" ON visit_followups FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
 
 -- RLS Policies for comments
 CREATE POLICY "comments_select" ON comments FOR SELECT TO authenticated USING (true);
 CREATE POLICY "comments_insert" ON comments FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "comments_delete" ON comments FOR DELETE TO authenticated USING (auth.uid() = user_id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "comments_delete" ON comments FOR DELETE TO authenticated USING (auth.uid() = user_id OR EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
 
 -- RLS Policies for activity_logs
-CREATE POLICY "logs_select" ON activity_logs FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
+CREATE POLICY "logs_select" ON activity_logs FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
 CREATE POLICY "logs_insert" ON activity_logs FOR INSERT TO authenticated WITH CHECK (true);
 
 -- RLS Policies for notifications

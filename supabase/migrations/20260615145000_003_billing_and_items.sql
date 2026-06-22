@@ -21,9 +21,9 @@ ALTER TABLE service_items ENABLE ROW LEVEL SECURITY;
 
 -- Policies for service_items
 CREATE POLICY "service_items_select" ON service_items FOR SELECT TO authenticated USING (true);
-CREATE POLICY "service_items_insert" ON service_items FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
-CREATE POLICY "service_items_update" ON service_items FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'director')));
-CREATE POLICY "service_items_delete" ON service_items FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "service_items_insert" ON service_items FOR INSERT TO authenticated WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
+CREATE POLICY "service_items_update" ON service_items FOR UPDATE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'director')));
+CREATE POLICY "service_items_delete" ON service_items FOR DELETE TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
 
 -- Create invoice_items (joining table for cart elements)
 CREATE TABLE IF NOT EXISTS invoice_items (

@@ -17,7 +17,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier' | 'collaborator' | 'nurse';
+export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier' | 'collaborator' | 'nurse' | 'lawyer';
 
 export type VisitorType = 'client' | 'prospect' | 'supplier' | 'partner' | 'other';
 
@@ -91,6 +91,7 @@ export interface Visit {
   observations: string | null;
   report: string | null;
   attachments: string[] | null;
+  attachments_visible_to_all?: boolean;
   service_id: string | null;
   comments: string | null;
   status: VisitStatus;

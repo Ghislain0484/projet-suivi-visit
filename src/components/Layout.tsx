@@ -29,9 +29,9 @@ import {
 import { supabase, Notification as NotificationType } from '../lib/supabase';
 
 const navItems = [
-  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'] },
-  { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse'] },
-  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception'] },
+  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
+  { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
+  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception', 'lawyer'] },
   { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator'] },
@@ -136,6 +136,7 @@ export default function Layout() {
       cashier: 'Caissier(ère)',
       collaborator: 'Collaborateur',
       nurse: 'Infirmier',
+      lawyer: 'Juriste Externe',
     };
     return labels[role] || role;
   };

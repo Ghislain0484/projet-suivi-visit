@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, Visitor } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -9,9 +10,11 @@ import {
   Mail,
   Calendar,
   Users,
+  Trash2,
 } from 'lucide-react';
 
 export default function VisitorsListPage() {
+  const { profile } = useAuth();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +47,21 @@ export default function VisitorsListPage() {
       setVisitors(filtered);
     }
     setLoading(false);
+  };
+
+  const handleDeleteVisitor = async (visitor: Visitor) => {
+    if (window.confirm(`Voulez-vous vraiment supprimer définitivement le visiteur "${visitor.first_name} ${visitor.last_name}" ?`)) {
+      const { error } = await supabase
+        .from('visitors')
+        .delete()
+        .eq('id', visitor.id);
+
+      if (error) {
+        alert(`Erreur lors de la suppression : ${error.message}`);
+      } else {
+        fetchVisitors();
+      }
+    }
   };
 
   const getVisitorTypeLabel = (type: string) => {
@@ -137,6 +155,15 @@ export default function VisitorsListPage() {
                     {getVisitorTypeLabel(visitor.visitor_type)}
                   </span>
                 </div>
+                {profile && ['admin', 'director'].includes(profile.role) && (
+                  <button
+                    onClick={() => handleDeleteVisitor(visitor)}
+                    className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                    title="Supprimer le visiteur"
+                  >
+                    <Trash2 className="w-4.5 h-4.5" />
+                  </button>
+                )}
               </div>
 
               <div className="mt-4 space-y-2">

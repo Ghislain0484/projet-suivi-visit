@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 export default function VisitsListPage() {
@@ -86,6 +87,21 @@ export default function VisitsListPage() {
       console.error("Error fetching visits:", error);
     }
     setLoading(false);
+  };
+
+  const handleDeleteVisit = async (visitId: string, visitCode: string) => {
+    if (window.confirm(`Voulez-vous vraiment supprimer définitivement la visite "${visitCode}" ?`)) {
+      const { error } = await supabase
+        .from('visits')
+        .delete()
+        .eq('id', visitId);
+
+      if (error) {
+        alert(`Erreur lors de la suppression : ${error.message}`);
+      } else {
+        fetchVisits();
+      }
+    }
   };
 
   const exportToCSV = () => {
@@ -442,6 +458,15 @@ export default function VisitsListPage() {
                             title="Enregistrer le départ"
                           >
                             <CheckCircle className="w-4.5 h-4.5" />
+                          </button>
+                        )}
+                        {profile && ['admin', 'director'].includes(profile.role) && (
+                          <button
+                            onClick={() => handleDeleteVisit(visit.id, visit.visit_code)}
+                            className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-xl text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Supprimer la visite"
+                          >
+                            <Trash2 className="w-4.5 h-4.5" />
                           </button>
                         )}
                       </div>

@@ -17,6 +17,7 @@ import {
   X,
   Save,
   Printer,
+  Trash2,
 } from 'lucide-react';
 
 export default function InvoicesListPage() {
@@ -169,6 +170,21 @@ export default function InvoicesListPage() {
     await supabase.from('invoices').update(updates).eq('id', invoiceId);
     setEditingInvoice(null);
     fetchInvoices();
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string, visitCode: string) => {
+    if (window.confirm(`Voulez-vous vraiment supprimer définitivement la facturation pour la visite "${visitCode}" ?`)) {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId);
+
+      if (error) {
+        alert(`Erreur lors de la suppression : ${error.message}`);
+      } else {
+        fetchInvoices();
+      }
+    }
   };
 
   const handleRecordQuickPayment = async (e: React.FormEvent) => {
@@ -544,6 +560,15 @@ export default function InvoicesListPage() {
                               title="Modifier"
                             >
                               <Edit className="w-4 h-4 text-gray-600" />
+                            </button>
+                          )}
+                          {profile && ['admin', 'director'].includes(profile.role) && (
+                            <button
+                              onClick={() => handleDeleteInvoice(invoice.id, (invoice as any).visit?.visit_code || '')}
+                              className="p-2 hover:bg-rose-50 rounded-lg transition-colors text-slate-400 hover:text-rose-600"
+                              title="Supprimer la facture"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>

@@ -12,6 +12,7 @@ import {
   Save,
   Loader2,
   UserCog,
+  Trash2,
 } from 'lucide-react';
 
 export default function ServicesListPage() {
@@ -93,12 +94,17 @@ export default function ServicesListPage() {
 
   const handleItemDelete = async (itemId: string) => {
     if (!selectedServiceForItems) return;
-    if (window.confirm('Voulez-vous vraiment désactiver cet élément de tarification ?')) {
-      await supabase
+    if (window.confirm('Voulez-vous vraiment supprimer définitivement cet élément de tarification ?')) {
+      const { error } = await supabase
         .from('service_items')
-        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .delete()
         .eq('id', itemId);
-      fetchServiceItems(selectedServiceForItems.id);
+
+      if (error) {
+        alert(`Erreur lors de la suppression : ${error.message}`);
+      } else {
+        fetchServiceItems(selectedServiceForItems.id);
+      }
     }
   };
 
@@ -187,6 +193,21 @@ export default function ServicesListPage() {
     setShowForm(true);
   };
 
+  const handleDeleteService = async (service: Service) => {
+    if (window.confirm(`Voulez-vous vraiment supprimer définitivement le service "${service.name}" ?\nAttention: cela supprimera également toutes les prestations de son catalogue.`)) {
+      const { error } = await supabase
+        .from('services')
+        .delete()
+        .eq('id', service.id);
+
+      if (error) {
+        alert(`Erreur lors de la suppression : ${error.message}`);
+      } else {
+        fetchServices();
+      }
+    }
+  };
+
   const filteredServices = searchQuery
     ? services.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : services;
@@ -269,13 +290,22 @@ export default function ServicesListPage() {
                         <Settings className="w-4 h-4" />
                       </button>
                       {canManage && (
-                        <button
-                          onClick={() => openEditForm(service)}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Modifier le service"
-                        >
-                          <Edit className="w-4 h-4 text-gray-600" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openEditForm(service)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Modifier le service"
+                          >
+                            <Edit className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteService(service)}
+                            className="p-2 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Supprimer le service"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

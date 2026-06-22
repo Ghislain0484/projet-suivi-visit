@@ -20,6 +20,7 @@ import {
   Plus,
   ShieldAlert,
   Trash2,
+  MapPin,
 } from 'lucide-react';
 
 export default function VisitDetailPage() {
@@ -792,7 +793,7 @@ export default function VisitDetailPage() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 sm:col-span-2 grid grid-cols-2 gap-4">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <p className="label">Service concerné</p>
                   <p className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
@@ -805,6 +806,13 @@ export default function VisitDetailPage() {
                   <p className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
                     <User className="w-4 h-4 text-slate-400" />
                     {visit.person_to_meet || 'Non renseigné'}
+                  </p>
+                </div>
+                <div>
+                  <p className="label">Succursale / Site</p>
+                  <p className="font-semibold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-slate-400" />
+                    {(visit as any).branch || 'Siège (Bonoua)'}
                   </p>
                 </div>
               </div>

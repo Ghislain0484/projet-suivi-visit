@@ -410,9 +410,14 @@ export default function VisitsListPage() {
                     </td>
                     <td className="max-w-[200px] truncate font-medium">{visit.purpose}</td>
                     <td>
-                      <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
-                        <Building2 className="w-4 h-4 text-slate-400" />
-                        <span className="font-medium">{visit.service?.name || '-'}</span>
+                      <div className="flex flex-col text-slate-600 dark:text-slate-400">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-slate-400" />
+                          <span className="font-medium text-sm">{visit.service?.name || '-'}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
+                          {(visit as any).branch || 'Siège (Bonoua)'}
+                        </span>
                       </div>
                     </td>
                     <td>

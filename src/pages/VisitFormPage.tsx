@@ -50,6 +50,7 @@ export default function VisitFormPage() {
     assigned_collaborator_id: '',
     service_id: '',
     comments: '',
+    branch: 'Siège (Bonoua)',
   });
 
   const getRoleLabel = (role: string) => {
@@ -115,6 +116,7 @@ export default function VisitFormPage() {
         assigned_collaborator_id: data.assigned_collaborator_id || '',
         service_id: data.service_id || '',
         comments: data.comments || '',
+        branch: data.branch || 'Siège (Bonoua)',
       });
     }
     setLoading(false);
@@ -201,6 +203,7 @@ export default function VisitFormPage() {
         assigned_collaborator_id: formData.assigned_collaborator_id || null,
         service_id: formData.service_id || null,
         comments: formData.comments || null,
+        branch: formData.branch,
         created_by: user?.id,
       };
 
@@ -508,7 +511,7 @@ export default function VisitFormPage() {
             <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Détails de la visite</h2>
           </div>
           <div className="card-body space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="arrival_time" className="label">
                   Date et heure d'arrivée *
@@ -548,6 +551,25 @@ export default function VisitFormPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="branch" className="label">
+                  Succursale / Site *
+                </label>
+                <select
+                  id="branch"
+                  name="branch"
+                  value={formData.branch}
+                  onChange={handleInputChange}
+                  className="input"
+                  required
+                >
+                  <option value="Siège (Bonoua)">Siège (Bonoua)</option>
+                  <option value="Succursale Grand-Bassam">Succursale Grand-Bassam</option>
+                  <option value="Succursale Abidjan">Succursale Abidjan</option>
+                  <option value="Succursale Assinie">Succursale Assinie</option>
+                </select>
               </div>
             </div>
 

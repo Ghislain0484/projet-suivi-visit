@@ -16,6 +16,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  MapPin,
 } from 'lucide-react';
 
 export default function UsersListPage() {
@@ -37,6 +38,7 @@ export default function UsersListPage() {
     service_id: '',
     phone: '',
     is_active: true,
+    branch: 'Siège (Bonoua)',
     password: '',
   });
 
@@ -78,6 +80,7 @@ export default function UsersListPage() {
             service_id: form.service_id || null,
             phone: form.phone || null,
             is_active: form.is_active,
+            branch: form.branch,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editingUser.id);
@@ -99,6 +102,7 @@ export default function UsersListPage() {
             service_id: form.service_id || null,
             phone: form.phone || null,
             is_active: form.is_active,
+            branch: form.branch,
           });
           if (profileError) throw profileError;
         }
@@ -113,6 +117,7 @@ export default function UsersListPage() {
         service_id: '',
         phone: '',
         is_active: true,
+        branch: 'Siège (Bonoua)',
         password: '',
       });
       fetchUsers();
@@ -132,6 +137,7 @@ export default function UsersListPage() {
       service_id: user.service_id || '',
       phone: user.phone || '',
       is_active: user.is_active,
+      branch: (user as any).branch || 'Siège (Bonoua)',
       password: '',
     });
     setShowForm(true);
@@ -192,6 +198,7 @@ export default function UsersListPage() {
               service_id: '',
               phone: '',
               is_active: true,
+              branch: 'Siège (Bonoua)',
               password: '',
             });
             setShowForm(true);
@@ -280,6 +287,10 @@ export default function UsersListPage() {
                     <span>{services.find((s) => s.id === user.service_id)?.name || 'N/A'}</span>
                   </div>
                 )}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <MapPin className="w-4 h-4 text-slate-400" />
+                  <span>Site: {(user as any).branch || 'Siège (Bonoua)'}</span>
+                </div>
               </div>
 
               <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
@@ -380,6 +391,21 @@ export default function UsersListPage() {
                       {s.name}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Succursale / Site *</label>
+                <select
+                  value={form.branch}
+                  onChange={(e) => setForm((p) => ({ ...p, branch: e.target.value }))}
+                  className="input"
+                  required
+                >
+                  <option value="Siège (Bonoua)">Siège (Bonoua)</option>
+                  <option value="Succursale Grand-Bassam">Succursale Grand-Bassam</option>
+                  <option value="Succursale Abidjan">Succursale Abidjan</option>
+                  <option value="Succursale Assinie">Succursale Assinie</option>
                 </select>
               </div>
 

@@ -193,9 +193,18 @@ export interface Appointment {
   collaborator?: Profile;
 }
 
+export interface Intern {
+  id: string;
+  full_name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface HRPresence {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  intern_id: string | null;
   employee_name: string | null;
   date: string;
   arrival_time: string;
@@ -215,6 +224,7 @@ export interface HRPresence {
   created_at: string;
   updated_at: string;
   profile?: Profile;
+  intern?: Intern;
 }
 
 export interface Mission {

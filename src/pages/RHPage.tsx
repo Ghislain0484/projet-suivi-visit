@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase, HRPresence, Permission, Profile } from '../lib/supabase';
+import { supabase, HRPresence, Permission, Profile, Intern } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { format, differenceInMinutes } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,6 +21,7 @@ import {
   Filter,
   Download,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 
 export default function RHPage() {
@@ -61,9 +62,16 @@ export default function RHPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [services, setServices] = useState<any[]>([]);
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
-  const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'interns' | 'team'>('personal');
 
   const isAdminOrRH = profile && ['admin', 'director', 'reception'].includes(profile.role);
+
+  // Interns Kiosk state
+  const [interns, setInterns] = useState<Intern[]>([]);
+  const [internPresences, setInternPresences] = useState<HRPresence[]>([]);
+  const [loadingInterns, setLoadingInterns] = useState(false);
+  const [newInternName, setNewInternName] = useState('');
+  const [addingIntern, setAddingIntern] = useState(false);
 
   // Parse token from URL parameters on mount
   useEffect(() => {
@@ -82,6 +90,7 @@ export default function RHPage() {
     if (isAdminOrRH) {
       fetchTeamData();
       fetchMetadata();
+      fetchInternsData();
     }
     // Dynamic QR rotation interval (V3)
     let interval: any;
@@ -296,7 +305,7 @@ export default function RHPage() {
     try {
       let query = supabase
         .from('hr_presences')
-        .select('*, profile:profiles(*, service:services(*))')
+        .select('*, profile:profiles(*, service:services(*)), intern:interns(*)')
         .order('date', { ascending: false });
 
       if (filterDate) query = query.eq('date', filterDate);
@@ -325,6 +334,115 @@ export default function RHPage() {
 
     const { data: collabs } = await supabase.from('profiles').select('*').eq('is_active', true);
     if (collabs) setCollaborators(collabs);
+  };
+
+  const fetchInternsData = async () => {
+    if (!isAdminOrRH) return;
+    setLoadingInterns(true);
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      
+      const { data: internsList } = await supabase
+        .from('interns')
+        .select('*')
+        .order('full_name', { ascending: true });
+        
+      if (internsList) setInterns(internsList);
+
+      const { data: presList } = await supabase
+        .from('hr_presences')
+        .select('*')
+        .eq('date', todayStr)
+        .not('intern_id', 'is', null);
+
+      if (presList) setInternPresences(presList);
+    } catch (err) {
+      console.error("Error fetching interns data:", err);
+    } finally {
+      setLoadingInterns(false);
+    }
+  };
+
+  const handleAddIntern = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newInternName.trim()) return;
+    setAddingIntern(true);
+    try {
+      const { error } = await supabase
+        .from('interns')
+        .insert({ full_name: newInternName.trim(), is_active: true });
+      if (error) throw error;
+      setNewInternName('');
+      await fetchInternsData();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'ajout du stagiaire.");
+    } finally {
+      setAddingIntern(false);
+    }
+  };
+
+  const handleToggleInternActive = async (internId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('interns')
+        .update({ is_active: !currentStatus })
+        .eq('id', internId);
+      if (error) throw error;
+      await fetchInternsData();
+    } catch (err: any) {
+      alert(err.message || "Erreur de modification du statut.");
+    }
+  };
+
+  const handleDeleteIntern = async (internId: string, name: string) => {
+    if (!window.confirm(`Voulez-vous vraiment supprimer définitivement le stagiaire "${name}" ? Ses historiques de pointage seront également supprimés.`)) return;
+    try {
+      const { error } = await supabase
+        .from('interns')
+        .delete()
+        .eq('id', internId);
+      if (error) throw error;
+      await fetchInternsData();
+    } catch (err: any) {
+      alert(err.message || "Erreur de suppression.");
+    }
+  };
+
+  const handleKioskPointage = async (internId: string, action: 'arrival' | 'break_start' | 'break_end' | 'departure') => {
+    setScanning(true);
+    try {
+      let lat: number | null = null;
+      let lng: number | null = null;
+      let accuracy: number | null = null;
+
+      try {
+        const pos = await getGPSCoordsPromise();
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        accuracy = pos.coords.accuracy;
+        setGpsCoords({ lat, lng, accuracy });
+      } catch (gpsErr: any) {
+        console.warn("Tablet GPS failed, continuing without GPS coordinates:", gpsErr);
+      }
+
+      const gpsVal = lat ? `LAT:${lat.toFixed(5)}, LNG:${lng.toFixed(5)} (±${accuracy?.toFixed(0)}m)` : null;
+
+      const { error } = await supabase.rpc('kiosk_check_in', {
+        target_intern_id: internId,
+        action_type: action,
+        gps_val: gpsVal,
+        lat: lat,
+        lng: lng,
+        accuracy: accuracy
+      });
+
+      if (error) throw error;
+      await fetchInternsData();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors du pointage borne.");
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleManualPointage = async (action: 'arrival' | 'break_start' | 'break_end' | 'departure') => {
@@ -529,6 +647,19 @@ export default function RHPage() {
               }`}
             >
               <Clock className="w-4 h-4" /> Mon Pointage
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('interns');
+                fetchInternsData();
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'interns'
+                  ? 'bg-white dark:bg-slate-900 text-primary-600 dark:text-primary-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Users className="w-4 h-4" /> Pointage Stagiaires
             </button>
             <button
               onClick={() => {
@@ -890,6 +1021,199 @@ export default function RHPage() {
             </div>
           </div>
         </div>
+      ) : activeTab === 'interns' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Pointage Borne List */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="card">
+              <div className="card-header bg-gradient-to-r from-primary-600/5 to-primary-700/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary-600" />
+                  Pointage Express (Borne Stagiaires)
+                </h2>
+                <span className="text-[10px] bg-primary-100 text-primary-800 dark:bg-primary-950/40 dark:text-primary-400 px-2.5 py-1 rounded-full font-bold">
+                  {interns.filter(i => i.is_active).length} Stagiaire(s) Actif(s)
+                </span>
+              </div>
+              <div className="card-body p-6 space-y-4">
+                {scanning && (
+                  <div className="flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/80 animate-pulse">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary-600 mr-2" />
+                    <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Traitement du pointage, veuillez patienter...</span>
+                  </div>
+                )}
+                
+                {interns.filter(i => i.is_active).length === 0 ? (
+                  <div className="text-center py-12 text-slate-400">
+                    <Users className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm font-semibold">Aucun stagiaire actif dans la liste.</p>
+                    <p className="text-xs text-slate-500 mt-1">Ajoutez des stagiaires à l'aide du panneau de droite pour commencer.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {interns.filter(i => i.is_active).map((intern) => {
+                      const todayPresence = internPresences.find(p => p.intern_id === intern.id);
+                      return (
+                        <div 
+                          key={intern.id}
+                          className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/40 dark:border-slate-800/40 hover:shadow-sm transition-all space-y-3"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-bold text-slate-800 dark:text-white text-sm">{intern.full_name}</h3>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider mt-0.5">Stagiaire</p>
+                            </div>
+                            {todayPresence ? getStatusBadge(todayPresence.status) : <span className="badge badge-gray">Non pointé</span>}
+                          </div>
+
+                          <div className="bg-white dark:bg-slate-950/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60 text-[10px] flex justify-between gap-2">
+                            <div>
+                              <span className="text-slate-400 font-medium block">Arrivée</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-300">
+                                {todayPresence?.arrival_time ? format(new Date(todayPresence.arrival_time), 'HH:mm:ss') : '--:--'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 font-medium block">Pause</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-300">
+                                {todayPresence?.break_start ? format(new Date(todayPresence.break_start), 'HH:mm') : '--:--'}
+                                {todayPresence?.break_end ? ` / ${format(new Date(todayPresence.break_end), 'HH:mm')}` : ''}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 font-medium block">Départ</span>
+                              <span className="font-bold text-slate-700 dark:text-slate-300">
+                                {todayPresence?.departure_time ? format(new Date(todayPresence.departure_time), 'HH:mm:ss') : '--:--'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-1.5 pt-1">
+                            {!todayPresence ? (
+                              <button
+                                onClick={() => handleKioskPointage(intern.id, 'arrival')}
+                                disabled={scanning}
+                                className="btn-primary flex-1 py-2 text-[10px] font-extrabold flex items-center justify-center gap-1 rounded-xl"
+                              >
+                                <Clock className="w-3.5 h-3.5" /> Arrivée
+                              </button>
+                            ) : (
+                              <>
+                                {todayPresence.status === 'present' && !todayPresence.departure_time && (
+                                  <button
+                                    onClick={() => handleKioskPointage(intern.id, 'break_start')}
+                                    disabled={scanning}
+                                    className="btn-warning flex-1 py-2 text-[10px] font-extrabold flex items-center justify-center gap-1 rounded-xl"
+                                  >
+                                    <Pause className="w-3.5 h-3.5" /> Pause
+                                  </button>
+                                )}
+                                {todayPresence.status === 'pause' && !todayPresence.departure_time && (
+                                  <button
+                                    onClick={() => handleKioskPointage(intern.id, 'break_end')}
+                                    disabled={scanning}
+                                    className="btn-success flex-1 py-2 text-[10px] font-extrabold flex items-center justify-center gap-1 rounded-xl"
+                                  >
+                                    <Play className="w-3.5 h-3.5" /> Reprise
+                                  </button>
+                                )}
+                                {!todayPresence.departure_time && (
+                                  <button
+                                    onClick={() => handleKioskPointage(intern.id, 'departure')}
+                                    disabled={scanning}
+                                    className="btn-danger flex-1 py-2 text-[10px] font-extrabold flex items-center justify-center gap-1 rounded-xl"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" /> Départ
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Manage Interns List Panel */}
+          <div className="space-y-6">
+            <div className="card">
+              <div className="card-header bg-gradient-to-r from-primary-600/5 to-primary-700/5">
+                <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-5 h-5 text-primary-600" />
+                  Gestion de la Liste
+                </h3>
+              </div>
+              <div className="card-body p-4 space-y-4">
+                {/* Form to add an intern */}
+                <form onSubmit={handleAddIntern} className="space-y-3">
+                  <div>
+                    <label className="label text-[10px] uppercase font-bold">Nom du Stagiaire *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newInternName}
+                        onChange={(e) => setNewInternName(e.target.value)}
+                        className="input text-xs"
+                        placeholder="Ex: Marius Kouamé"
+                        required
+                        disabled={addingIntern}
+                      />
+                      <button
+                        type="submit"
+                        disabled={addingIntern || !newInternName.trim()}
+                        className="btn-primary px-3 py-2 text-xs font-bold shrink-0 rounded-xl"
+                      >
+                        {addingIntern ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ajouter"}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+
+                <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">Tous les stagiaires ({interns.length})</span>
+                  <div className="max-h-[300px] overflow-y-auto scrollbar-thin space-y-2">
+                    {interns.length === 0 ? (
+                      <p className="text-xs text-slate-400 dark:text-slate-600 italic text-center py-4">Aucun stagiaire enregistré.</p>
+                    ) : (
+                      interns.map((intern) => (
+                        <div 
+                          key={intern.id}
+                          className="flex items-center justify-between p-2.5 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-xl"
+                        >
+                          <span className={`text-xs font-semibold ${intern.is_active ? 'text-slate-700 dark:text-slate-350' : 'text-slate-400 dark:text-slate-650 line-through'}`}>{intern.full_name}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleInternActive(intern.id, intern.is_active)}
+                              className={`p-1.5 rounded-lg border text-xs font-bold ${
+                                intern.is_active 
+                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-500/20 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                              }`}
+                              title={intern.is_active ? "Désactiver" : "Activer"}
+                            >
+                              {intern.is_active ? "Actif" : "Inactif"}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteIntern(intern.id, intern.full_name)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/20"
+                              title="Supprimer définitivement"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : (
         /* Team Supervision View */
         <div className="space-y-6">
@@ -1012,8 +1336,13 @@ export default function RHPage() {
                           <td>{format(new Date(item.date), 'dd/MM/yyyy')}</td>
                           <td className="font-bold text-slate-800 dark:text-white">
                             {item.profile?.full_name || item.employee_name || 'Inconnu'}
+                            {item.intern_id && (
+                              <span className="text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-black uppercase ml-1.5">
+                                Stagiaire
+                              </span>
+                            )}
                           </td>
-                          <td>{item.profile?.service?.name || '-'}</td>
+                          <td>{item.profile?.service?.name || (item.intern_id ? 'Stagiaire' : '-')}</td>
                           <td className="font-mono">{item.arrival_time ? format(new Date(item.arrival_time), 'HH:mm:ss') : '-'}</td>
                           <td className="font-mono">{item.break_start ? format(new Date(item.break_start), 'HH:mm:ss') : '-'}</td>
                           <td className="font-mono">{item.break_end ? format(new Date(item.break_end), 'HH:mm:ss') : '-'}</td>

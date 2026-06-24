@@ -24,6 +24,43 @@ import {
   Trash2,
 } from 'lucide-react';
 
+// GICO Branches coordinates
+const GICO_BRANCHES = [
+  { name: "Siège (Bonoua)", lat: 5.27138, lng: -3.59472 },
+  { name: "GICO 8 Kilos", lat: 5.2891, lng: -3.6625 },
+  { name: "GICO MOROKRO", lat: 5.8672, lng: -4.6853 },
+  { name: "GICO ABOISSO COMOE", lat: 5.4678, lng: -3.2081 }
+];
+
+// Haversine formula to calculate distance in km
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Get the nearest GICO branch and the distance to it
+function getNearestBranch(lat: number, lng: number) {
+  let nearest = GICO_BRANCHES[0];
+  let minDistance = calculateDistance(lat, lng, nearest.lat, nearest.lng);
+  
+  for (let i = 1; i < GICO_BRANCHES.length; i++) {
+    const dist = calculateDistance(lat, lng, GICO_BRANCHES[i].lat, GICO_BRANCHES[i].lng);
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearest = GICO_BRANCHES[i];
+    }
+  }
+  
+  return { branch: nearest, distance: minDistance };
+}
+
 export default function RHPage() {
   const { user, profile } = useAuth();
   const [presence, setPresence] = useState<HRPresence | null>(null);
@@ -95,6 +132,7 @@ export default function RHPage() {
 
   useEffect(() => {
     fetchRHData();
+    requestGPS(); // Warm up GPS chip on mount / load
     if (isAdminOrRH) {
       fetchTeamData();
       fetchMetadata();
@@ -800,32 +838,104 @@ export default function RHPage() {
                   </div>
 
                   {/* Real GPS status indicator */}
-                  <div className="w-full space-y-2">
+                  <div className="w-full space-y-3">
                     <button
                       onClick={requestGPS}
                       disabled={fetchingGps}
-                      className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all ${
+                      className={`w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all ${
                         gpsCoords
-                          ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border-emerald-500/20'
+                          ? 'bg-white dark:bg-slate-900 text-slate-700 border-slate-200 dark:border-slate-800 hover:bg-slate-50'
                           : gpsError
                             ? 'bg-rose-50 dark:bg-rose-950/20 text-rose-600 border-rose-500/20'
-                            : 'bg-white dark:bg-slate-900 text-slate-700 hover:bg-slate-50 border-slate-200 dark:border-slate-800'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 hover:bg-slate-50 border-slate-200 dark:border-slate-800 shadow-sm'
                       }`}
                     >
                       {fetchingGps ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-500" />
                       ) : (
-                        <MapPin className="w-3.5 h-3.5" />
+                        <MapPin className="w-3.5 h-3.5 text-primary-500" />
                       )}
-                      {gpsCoords
-                        ? `GPS Connecté (Précision ±${gpsCoords.accuracy.toFixed(0)}m)`
-                        : gpsError
-                          ? gpsError
-                          : 'Autoriser la géolocalisation'}
+                      {fetchingGps ? 'Calcul de la position...' : 'Mettre à jour la géolocalisation'}
                     </button>
-                    {gpsCoords && (
-                      <div className="text-[10px] text-center text-slate-400 font-mono">
-                        Lat: {gpsCoords.lat.toFixed(5)} | Lng: {gpsCoords.lng.toFixed(5)}
+
+                    {gpsCoords && (() => {
+                      const { branch, distance } = getNearestBranch(gpsCoords.lat, gpsCoords.lng);
+                      let badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30';
+                      let badgeText = 'Précision faible';
+                      let signalColor = 'bg-rose-500';
+
+                      if (gpsCoords.accuracy <= 15) {
+                        badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30';
+                        badgeText = 'Précision excellente';
+                        signalColor = 'bg-emerald-500';
+                      } else if (gpsCoords.accuracy <= 80) {
+                        badgeClass = 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30';
+                        badgeText = 'Précision moyenne';
+                        signalColor = 'bg-amber-500';
+                      }
+
+                      return (
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-2xl space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Signal GPS</span>
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${signalColor} animate-pulse`}></span>
+                              {badgeText} (±{gpsCoords.accuracy.toFixed(0)}m)
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 border-t border-slate-200/40 dark:border-slate-800/40 pt-2 text-[11px]">
+                            <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
+                              <span>Agence la plus proche:</span>
+                              <span className="font-bold text-slate-800 dark:text-white">{branch.name}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
+                              <span>Distance:</span>
+                              <span className="font-mono font-bold text-primary-600 dark:text-primary-400">
+                                {distance < 1 ? `${(distance * 1000).toFixed(0)} m` : `${distance.toFixed(2)} km`}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-between items-center border-t border-slate-200/40 dark:border-slate-800/40 pt-2 text-[10px]">
+                            <span className="font-mono text-slate-400 dark:text-slate-500">
+                              {gpsCoords.lat.toFixed(5)}, {gpsCoords.lng.toFixed(5)}
+                            </span>
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${gpsCoords.lat},${gpsCoords.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-bold hover:underline"
+                            >
+                              Voir sur Google Maps
+                            </a>
+                          </div>
+
+                          {/* GPS Tips for poor signal */}
+                          {gpsCoords.accuracy > 15 && (
+                            <div className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl space-y-1 mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                              <p className="font-bold flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                Conseils pour affiner la précision :
+                              </p>
+                              <ul className="list-disc list-inside space-y-0.5 text-[9px] pl-1 font-medium">
+                                <li>Activez le Wi-Fi (aide à la géolocalisation urbaine).</li>
+                                <li>Placez-vous près d'une fenêtre ou à l'extérieur.</li>
+                                <li>Assurez-vous que le GPS de l'appareil est activé en mode "Haute Précision".</li>
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {gpsError && (
+                      <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-500/10 rounded-2xl flex items-start gap-2 text-xs text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold">Erreur de localisation</p>
+                          <p className="text-[10px] mt-0.5 font-medium">{gpsError}</p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1100,9 +1210,23 @@ export default function RHPage() {
                   <Users className="w-5 h-5 text-primary-600" />
                   Pointage Express (Borne Stagiaires)
                 </h2>
-                <span className="text-[10px] bg-primary-100 text-primary-800 dark:bg-primary-950/40 dark:text-primary-400 px-2.5 py-1 rounded-full font-bold">
-                  {interns.filter(i => i.is_active).length} Stagiaire(s) Actif(s)
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {gpsCoords && (
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border flex items-center gap-1 ${
+                      gpsCoords.accuracy <= 15
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30'
+                        : gpsCoords.accuracy <= 80
+                          ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
+                          : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30'
+                    }`}>
+                      <MapPin className="w-3 h-3 text-primary-500" />
+                      GPS Tablette: ±{gpsCoords.accuracy.toFixed(0)}m
+                    </span>
+                  )}
+                  <span className="text-[10px] bg-primary-100 text-primary-800 dark:bg-primary-950/40 dark:text-primary-400 px-2.5 py-1 rounded-full font-bold">
+                    {interns.filter(i => i.is_active).length} Stagiaire(s) Actif(s)
+                  </span>
+                </div>
               </div>
               <div className="card-body p-6 space-y-4">
                 {scanning && (

@@ -118,17 +118,15 @@ export default function DashboardPage() {
     const monthStart = startOfMonth(now).toISOString();
     const monthEnd = endOfMonth(now).toISOString();
     const todayStr = format(now, 'yyyy-MM-dd');
+    const sevenDaysAgoStart = startOfDay(subDays(now, 6)).toISOString();
 
     try {
-      // Parallelized Promise.all fetches (Option B optimization)
-      // Parallelized Promise.all fetches (Option B optimization)
+      // Parallelized Promise.all fetches (Optimized to prevent query storm)
       const [
         servicesRes,
         todayVisitsRes,
         weekVisitsRes,
         monthVisitsRes,
-        withApptRes,
-        withoutApptRes,
         invoicesRes,
         urgentRes,
         blockedRes,
@@ -138,13 +136,12 @@ export default function DashboardPage() {
         missionsRes,
         usersRes,
         recentPaymentsRes,
+        trendVisitsRes,
       ] = await Promise.all([
         supabase.from('services').select('*').eq('is_active', true),
         supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', todayStart).lte('arrival_time', todayEnd),
         supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', weekStart).lte('arrival_time', weekEnd),
-        supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', monthStart).lte('arrival_time', monthEnd),
-        supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', monthStart).lte('arrival_time', monthEnd).eq('has_appointment', true),
-        supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', monthStart).lte('arrival_time', monthEnd).eq('has_appointment', false),
+        supabase.from('visits').select('id, arrival_time, has_appointment, service_id').gte('arrival_time', monthStart).lte('arrival_time', monthEnd),
         supabase.from('invoices').select('amount, amount_paid, payment_status, updated_at').eq('is_billable', true),
         supabase.from('visit_followups').select('*', { count: 'exact', head: true }).eq('priority', 'urgent').neq('status', 'completed'),
         supabase.from('visit_followups').select('*', { count: 'exact', head: true }).eq('status', 'blocked'),
@@ -154,6 +151,7 @@ export default function DashboardPage() {
         supabase.from('missions').select('*, profile:profiles(*)').eq('status', 'in_progress'),
         supabase.from('profiles').select('*').eq('is_active', true),
         supabase.from('invoices').select('*, visit:visits(*, visitor:visitors(*))').gt('amount_paid', 0).order('updated_at', { ascending: false }).limit(5),
+        supabase.from('visits').select('id, arrival_time').gte('arrival_time', sevenDaysAgoStart).lte('arrival_time', todayEnd),
       ]);
 
       if (visitsQueueRes.data) setVisitsQueue(visitsQueueRes.data as any);
@@ -176,12 +174,17 @@ export default function DashboardPage() {
       const missionStaff = missionsRes.data?.length || 0;
       const absentStaff = Math.max(0, totalActiveStaff - (presentStaff + missionStaff));
 
+      const monthVisits = monthVisitsRes.data || [];
+      const monthVisitsCount = monthVisits.length;
+      const withApptCount = monthVisits.filter(v => v.has_appointment).length;
+      const withoutApptCount = monthVisits.filter(v => !v.has_appointment).length;
+
       setStats({
         todayVisits: todayVisitsRes.count || 0,
         weekVisits: weekVisitsRes.count || 0,
-        monthVisits: monthVisitsRes.count || 0,
-        withAppointment: withApptRes.count || 0,
-        withoutAppointment: withoutApptRes.count || 0,
+        monthVisits: monthVisitsCount,
+        withAppointment: withApptCount,
+        withoutAppointment: withoutApptCount,
         totalInvoiced,
         totalPaid,
         totalRemaining,
@@ -218,37 +221,30 @@ export default function DashboardPage() {
       }
       setFinanceTrend(financeTrendData);
 
-
-      // Service chart mappings
-      if (servicesRes.data && monthVisitsRes.count) {
-        const counts = await Promise.all(
-          servicesRes.data.map(async (s) => {
-            const { count } = await supabase
-              .from('visits')
-              .select('*', { count: 'exact', head: true })
-              .eq('service_id', s.id)
-              .gte('arrival_time', monthStart)
-              .lte('arrival_time', monthEnd);
-            return { name: s.name, visits: count || 0 };
-          })
-        );
+      // Service chart mappings (Done entirely client-side, zero queries)
+      if (servicesRes.data) {
+        const counts = servicesRes.data.map((s) => {
+          const count = monthVisits.filter(v => v.service_id === s.id).length;
+          return { name: s.name, visits: count };
+        });
         setVisitsByService(counts.filter(c => c.visits > 0));
       }
 
-      // Visit trend trend
+      // Visit trend (Done entirely client-side, zero queries)
+      const trendVisits = trendVisitsRes.data || [];
       const trendData = [];
       for (let i = 6; i >= 0; i--) {
         const d = subDays(now, i);
-        const dayStartStr = startOfDay(d).toISOString();
-        const dayEndStr = endOfDay(d).toISOString();
-        const { count } = await supabase
-          .from('visits')
-          .select('*', { count: 'exact', head: true })
-          .gte('arrival_time', dayStartStr)
-          .lte('arrival_time', dayEndStr);
+        const dayStart = startOfDay(d);
+        const dayEnd = endOfDay(d);
+        const count = trendVisits.filter(v => {
+          if (!v.arrival_time) return false;
+          const date = new Date(v.arrival_time);
+          return date >= dayStart && date <= dayEnd;
+        }).length;
         trendData.push({
           date: format(d, 'dd/MM'),
-          visits: count || 0,
+          visits: count,
         });
       }
       setVisitTrend(trendData);
@@ -342,8 +338,53 @@ export default function DashboardPage() {
 
       {/* Dashboard Content */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="loading-spinner h-8 w-8"></div>
+        <div className="space-y-6">
+          {/* KPIs Grid Skeleton */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="card p-6 border border-slate-100 dark:border-slate-800/80 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-2 w-full">
+                    <div className="h-3 w-2/3 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                    <div className="h-8 w-1/2 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                  </div>
+                  <div className="h-10 w-10 bg-slate-200/60 dark:bg-slate-800/40 rounded-2xl flex-shrink-0"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Content Grid Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
+            <div className="lg:col-span-2 card p-6 space-y-4">
+              <div className="h-5 w-48 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+              <div className="space-y-4 pt-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 pb-3 last:border-b-0">
+                    <div className="space-y-2 w-full">
+                      <div className="h-4 w-1/3 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                      <div className="h-3 w-1/4 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                    </div>
+                    <div className="h-4 w-12 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg flex-shrink-0"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="card p-6 space-y-4">
+              <div className="h-5 w-48 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+              <div className="space-y-3 pt-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 pb-3 last:border-b-0">
+                    <div className="space-y-2 w-full">
+                      <div className="h-4 w-1/2 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                      <div className="h-3 w-1/3 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg"></div>
+                    </div>
+                    <div className="h-4 w-12 bg-slate-200/60 dark:bg-slate-800/40 rounded-lg flex-shrink-0"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <>

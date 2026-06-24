@@ -75,7 +75,7 @@
   }
 
   .stat-card {
-    @apply card p-6 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-premium-dark cursor-pointer;
+    @apply card p-6 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-premium-dark cursor-pointer hover:border-primary-500/30 dark:hover:border-primary-500/20 hover:bg-white/80 dark:hover:bg-slate-900/70 transition-all duration-300;
   }
 
   /* Advanced Badges */
@@ -187,6 +187,10 @@
 
   .loading-spinner {
     @apply animate-spin rounded-full border-2 border-slate-200 dark:border-slate-800 border-t-primary-600 dark:border-t-primary-500;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-slate-200/60 dark:bg-slate-800/40 rounded-xl;
   }
 }
 

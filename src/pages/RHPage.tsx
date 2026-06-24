@@ -70,7 +70,7 @@ export default function RHPage() {
 
   // QR Scanner & Token states
   const [urlToken, setUrlToken] = useState<string | null>(null);
-  const [qrVersion, setQrVersion] = useState<'v1' | 'v2' | 'v3'>('v1');
+  const [qrVersion, setQrVersion] = useState<'v1' | 'v2' | 'v3'>('v3');
   const [dynamicToken, setDynamicToken] = useState('');
   const [scanning, setScanning] = useState(false);
   const [autoPointSuccess, setAutoPointSuccess] = useState<string | null>(null);
@@ -128,6 +128,48 @@ export default function RHPage() {
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
     }
+  }, []);
+
+  // Continuous GPS tracking to warm up the sensor on mount
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    setFetchingGps(true);
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setGpsCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+        setFetchingGps(false);
+        setGpsError(null);
+      },
+      (error) => {
+        setGpsCoords(prev => {
+          if (!prev) {
+            let msg = "Erreur de géolocalisation.";
+            if (error.code === 1) {
+              msg = "Veuillez autoriser l'accès GPS dans les paramètres.";
+            } else if (error.code === 2) {
+              msg = "Signal GPS indisponible.";
+            }
+            setGpsError(msg);
+          }
+          return prev;
+        });
+        setFetchingGps(false);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 20000,
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
   }, []);
 
   useEffect(() => {
@@ -267,8 +309,20 @@ export default function RHPage() {
     setDynamicToken(`GICO-DYNAMIC-QR-${randomHex}-${Date.now()}`);
   };
 
-  const getGPSCoordsPromise = (): Promise<GeolocationPosition> => {
+  const getGPSCoordsPromise = (): Promise<any> => {
     return new Promise((resolve, reject) => {
+      // If we already have a highly accurate location in state, resolve immediately!
+      if (gpsCoords && gpsCoords.accuracy <= 25) {
+        resolve({
+          coords: {
+            latitude: gpsCoords.lat,
+            longitude: gpsCoords.lng,
+            accuracy: gpsCoords.accuracy,
+          },
+        });
+        return;
+      }
+
       if (!navigator.geolocation) {
         reject(new Error("Le navigateur ne supporte pas la géolocalisation."));
         return;
@@ -276,7 +330,7 @@ export default function RHPage() {
 
       let watchId: number | null = null;
       let bestPosition: GeolocationPosition | null = null;
-      const timeoutMs = 8000; // Laisser jusqu'à 8 secondes à la puce GPS pour s'ajuster et affiner la précision
+      const timeoutMs = 12000; // Laisser jusqu'à 12 secondes à la puce GPS pour s'ajuster et affiner la précision
 
       const clearWatch = () => {
         if (watchId !== null) {
@@ -289,6 +343,14 @@ export default function RHPage() {
         clearWatch();
         if (bestPosition) {
           resolve(bestPosition);
+        } else if (gpsCoords) {
+          resolve({
+            coords: {
+              latitude: gpsCoords.lat,
+              longitude: gpsCoords.lng,
+              accuracy: gpsCoords.accuracy,
+            },
+          });
         } else {
           reject(new Error("Délai d'attente GPS dépassé. Veuillez réessayer."));
         }
@@ -299,6 +361,11 @@ export default function RHPage() {
           // Enregistrer la première position ou celle qui a une meilleure précision
           if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
             bestPosition = position;
+            setGpsCoords({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            });
           }
 
           // Si la précision est excellente (<= 15 mètres), on résout immédiatement !
@@ -310,7 +377,7 @@ export default function RHPage() {
         },
         (error) => {
           // Si nous avons déjà obtenu une coordonnée précédente, on ignore les erreurs temporaires de suivi
-          if (!bestPosition) {
+          if (!bestPosition && !gpsCoords) {
             clearTimeout(timer);
             clearWatch();
             reject(error);
@@ -381,7 +448,8 @@ export default function RHPage() {
         .from('permissions')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(20);
       if (perms) setPermissions(perms as Permission[]);
     } catch (err) {
       console.error(err);
@@ -398,7 +466,15 @@ export default function RHPage() {
         .select('*, profile:profiles(*, service:services(*)), intern:interns(*)')
         .order('date', { ascending: false });
 
-      if (filterDate) query = query.eq('date', filterDate);
+      if (filterDate) {
+        query = query.eq('date', filterDate);
+      } else {
+        // Limit query to last 30 days of records by default to ensure maximum performance
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoStr = format(thirtyDaysAgo, 'yyyy-MM-dd');
+        query = query.gte('date', thirtyDaysAgoStr);
+      }
       if (filterCollaborator) query = query.eq('user_id', filterCollaborator);
       if (filterStatus) query = query.eq('status', filterStatus);
 

@@ -70,7 +70,15 @@ export default function RHPage() {
   const [interns, setInterns] = useState<Intern[]>([]);
   const [internPresences, setInternPresences] = useState<HRPresence[]>([]);
   const [loadingInterns, setLoadingInterns] = useState(false);
-  const [newInternName, setNewInternName] = useState('');
+  const [newIntern, setNewIntern] = useState({
+    full_name: '',
+    service_id: '',
+    phone: '',
+    start_date: '',
+    end_date: '',
+    school_or_institution: '',
+    notes: ''
+  });
   const [addingIntern, setAddingIntern] = useState(false);
 
   // Parse token from URL parameters on mount
@@ -344,10 +352,10 @@ export default function RHPage() {
       
       const { data: internsList } = await supabase
         .from('interns')
-        .select('*')
+        .select('*, service:services(*)')
         .order('full_name', { ascending: true });
         
-      if (internsList) setInterns(internsList);
+      if (internsList) setInterns(internsList as any);
 
       const { data: presList } = await supabase
         .from('hr_presences')
@@ -365,14 +373,31 @@ export default function RHPage() {
 
   const handleAddIntern = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInternName.trim()) return;
+    if (!newIntern.full_name.trim()) return;
     setAddingIntern(true);
     try {
       const { error } = await supabase
         .from('interns')
-        .insert({ full_name: newInternName.trim(), is_active: true });
+        .insert({
+          full_name: newIntern.full_name.trim(),
+          service_id: newIntern.service_id || null,
+          phone: newIntern.phone.trim() || null,
+          start_date: newIntern.start_date || null,
+          end_date: newIntern.end_date || null,
+          school_or_institution: newIntern.school_or_institution.trim() || null,
+          notes: newIntern.notes.trim() || null,
+          is_active: true
+        });
       if (error) throw error;
-      setNewInternName('');
+      setNewIntern({
+        full_name: '',
+        service_id: '',
+        phone: '',
+        start_date: '',
+        end_date: '',
+        school_or_institution: '',
+        notes: ''
+      });
       await fetchInternsData();
     } catch (err: any) {
       alert(err.message || "Erreur lors de l'ajout du stagiaire.");
@@ -1061,7 +1086,14 @@ export default function RHPage() {
                           <div className="flex justify-between items-start">
                             <div>
                               <h3 className="font-bold text-slate-800 dark:text-white text-sm">{intern.full_name}</h3>
-                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider mt-0.5">Stagiaire</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                Stagiaire {intern.service?.name ? `• ${intern.service.name}` : ''}
+                              </p>
+                              {intern.phone && (
+                                <p className="text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                                  Tél: {intern.phone}
+                                </p>
+                              )}
                             </div>
                             {todayPresence ? getStatusBadge(todayPresence.status) : <span className="badge badge-gray">Non pointé</span>}
                           </div>
@@ -1144,66 +1176,174 @@ export default function RHPage() {
               <div className="card-header bg-gradient-to-r from-primary-600/5 to-primary-700/5">
                 <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
                   <Users className="w-5 h-5 text-primary-600" />
-                  Gestion de la Liste
+                  Gestion de la Liste & Infos Administratives
                 </h3>
               </div>
               <div className="card-body p-4 space-y-4">
-                {/* Form to add an intern */}
+                {/* Detailed Form to add an intern */}
                 <form onSubmit={handleAddIntern} className="space-y-3">
-                  <div>
-                    <label className="label text-[10px] uppercase font-bold">Nom du Stagiaire *</label>
-                    <div className="flex gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Nom Complet *</label>
                       <input
                         type="text"
-                        value={newInternName}
-                        onChange={(e) => setNewInternName(e.target.value)}
+                        value={newIntern.full_name}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, full_name: e.target.value }))}
                         className="input text-xs"
                         placeholder="Ex: Marius Kouamé"
                         required
                         disabled={addingIntern}
                       />
-                      <button
-                        type="submit"
-                        disabled={addingIntern || !newInternName.trim()}
-                        className="btn-primary px-3 py-2 text-xs font-bold shrink-0 rounded-xl"
-                      >
-                        {addingIntern ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ajouter"}
-                      </button>
+                    </div>
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Téléphone</label>
+                      <input
+                        type="tel"
+                        value={newIntern.phone}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, phone: e.target.value }))}
+                        className="input text-xs"
+                        placeholder="Ex: 07080910"
+                        disabled={addingIntern}
+                      />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Département / Service</label>
+                      <select
+                        value={newIntern.service_id}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, service_id: e.target.value }))}
+                        className="input text-xs"
+                        disabled={addingIntern}
+                      >
+                        <option value="">Sélectionner un service</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Établissement / École</label>
+                      <input
+                        type="text"
+                        value={newIntern.school_or_institution}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, school_or_institution: e.target.value }))}
+                        className="input text-xs"
+                        placeholder="Ex: INPHB, Ecole Supérieure..."
+                        disabled={addingIntern}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Date de début</label>
+                      <input
+                        type="date"
+                        value={newIntern.start_date}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, start_date: e.target.value }))}
+                        className="input text-xs"
+                        disabled={addingIntern}
+                      />
+                    </div>
+                    <div>
+                      <label className="label text-[10px] uppercase font-bold">Date de fin prévue</label>
+                      <input
+                        type="date"
+                        value={newIntern.end_date}
+                        onChange={(e) => setNewIntern((p) => ({ ...p, end_date: e.target.value }))}
+                        className="input text-xs"
+                        disabled={addingIntern}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="label text-[10px] uppercase font-bold">Remarques / Notes</label>
+                    <textarea
+                      value={newIntern.notes}
+                      onChange={(e) => setNewIntern((p) => ({ ...p, notes: e.target.value }))}
+                      className="input text-xs min-h-[60px]"
+                      placeholder="Informations ou projets assignés..."
+                      disabled={addingIntern}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={addingIntern || !newIntern.full_name.trim()}
+                    className="btn-primary w-full py-2.5 text-xs font-bold rounded-xl"
+                  >
+                    {addingIntern ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : "Enregistrer le Stagiaire"}
+                  </button>
                 </form>
 
                 <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3">
                   <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">Tous les stagiaires ({interns.length})</span>
-                  <div className="max-h-[300px] overflow-y-auto scrollbar-thin space-y-2">
+                  <div className="max-h-[400px] overflow-y-auto scrollbar-thin space-y-2.5">
                     {interns.length === 0 ? (
                       <p className="text-xs text-slate-400 dark:text-slate-600 italic text-center py-4">Aucun stagiaire enregistré.</p>
                     ) : (
                       interns.map((intern) => (
                         <div 
                           key={intern.id}
-                          className="flex items-center justify-between p-2.5 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-150 dark:border-slate-850 rounded-xl"
+                          className="p-3 bg-slate-50/50 dark:bg-slate-950/20 border border-slate-200/40 dark:border-slate-800/40 rounded-xl space-y-2"
                         >
-                          <span className={`text-xs font-semibold ${intern.is_active ? 'text-slate-700 dark:text-slate-350' : 'text-slate-400 dark:text-slate-650 line-through'}`}>{intern.full_name}</span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleToggleInternActive(intern.id, intern.is_active)}
-                              className={`p-1.5 rounded-lg border text-xs font-bold ${
-                                intern.is_active 
-                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-500/20 hover:bg-emerald-100'
-                                  : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                              }`}
-                              title={intern.is_active ? "Désactiver" : "Activer"}
-                            >
-                              {intern.is_active ? "Actif" : "Inactif"}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteIntern(intern.id, intern.full_name)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/20"
-                              title="Supprimer définitivement"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className={`text-xs font-bold ${intern.is_active ? 'text-slate-850 dark:text-slate-200' : 'text-slate-400 dark:text-slate-650 line-through'}`}>
+                                {intern.full_name}
+                              </span>
+                              {intern.service?.name && (
+                                <span className="text-[9px] bg-slate-100 text-slate-600 dark:bg-slate-850 dark:text-slate-400 px-1.5 py-0.5 rounded font-semibold ml-2">
+                                  {intern.service.name}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleToggleInternActive(intern.id, intern.is_active)}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-bold ${
+                                  intern.is_active 
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-500/20 hover:bg-emerald-100'
+                                    : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                }`}
+                                title={intern.is_active ? "Désactiver" : "Activer"}
+                              >
+                                {intern.is_active ? "Actif" : "Inactif"}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteIntern(intern.id, intern.full_name)}
+                                className="p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 rounded-lg transition-colors"
+                                title="Supprimer définitivement"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                            {intern.phone && (
+                              <div>
+                                <span className="text-slate-400">Tél :</span> {intern.phone}
+                              </div>
+                            )}
+                            {intern.school_or_institution && (
+                              <div>
+                                <span className="text-slate-400">Établissement :</span> {intern.school_or_institution}
+                              </div>
+                            )}
+                            {(intern.start_date || intern.end_date) && (
+                              <div className="col-span-2">
+                                <span className="text-slate-400">Période :</span> {intern.start_date ? format(new Date(intern.start_date), 'dd/MM/yyyy') : '?'} au {intern.end_date ? format(new Date(intern.end_date), 'dd/MM/yyyy') : '?'}
+                              </div>
+                            )}
+                            {intern.notes && (
+                              <div className="col-span-2 italic text-slate-400 mt-1 p-1.5 bg-white dark:bg-slate-900 rounded border border-slate-100 dark:border-slate-800/40">
+                                « {intern.notes} »
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))

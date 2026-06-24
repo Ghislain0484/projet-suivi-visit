@@ -197,8 +197,15 @@ export interface Intern {
   id: string;
   full_name: string;
   is_active: boolean;
+  service_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  phone: string | null;
+  school_or_institution: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
+  service?: Service;
 }
 
 export interface HRPresence {

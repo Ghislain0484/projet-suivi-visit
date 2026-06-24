@@ -235,11 +235,55 @@ export default function RHPage() {
         reject(new Error("Le navigateur ne supporte pas la géolocalisation."));
         return;
       }
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      });
+
+      let watchId: number | null = null;
+      let bestPosition: GeolocationPosition | null = null;
+      const timeoutMs = 8000; // Laisser jusqu'à 8 secondes à la puce GPS pour s'ajuster et affiner la précision
+
+      const clearWatch = () => {
+        if (watchId !== null) {
+          navigator.geolocation.clearWatch(watchId);
+        }
+      };
+
+      // Limiteur de temps (fallback) : résout avec la meilleure position capturée jusqu'alors
+      const timer = setTimeout(() => {
+        clearWatch();
+        if (bestPosition) {
+          resolve(bestPosition);
+        } else {
+          reject(new Error("Délai d'attente GPS dépassé. Veuillez réessayer."));
+        }
+      }, timeoutMs);
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          // Enregistrer la première position ou celle qui a une meilleure précision
+          if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+            bestPosition = position;
+          }
+
+          // Si la précision est excellente (<= 15 mètres), on résout immédiatement !
+          if (position.coords.accuracy <= 15) {
+            clearTimeout(timer);
+            clearWatch();
+            resolve(position);
+          }
+        },
+        (error) => {
+          // Si nous avons déjà obtenu une coordonnée précédente, on ignore les erreurs temporaires de suivi
+          if (!bestPosition) {
+            clearTimeout(timer);
+            clearWatch();
+            reject(error);
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: timeoutMs,
+          maximumAge: 0, // Ignorer le cache navigateur pour forcer une nouvelle mesure réelle
+        }
+      );
     });
   };
 

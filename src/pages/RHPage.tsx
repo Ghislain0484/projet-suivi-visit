@@ -24,13 +24,8 @@ import {
   Trash2,
 } from 'lucide-react';
 
-// GICO Branches coordinates
-const GICO_BRANCHES = [
-  { name: "Siège (Bonoua)", lat: 5.27138, lng: -3.59472 },
-  { name: "GICO 8 Kilos", lat: 5.2891, lng: -3.6625 },
-  { name: "GICO MOROKRO", lat: 5.8672, lng: -4.6853 },
-  { name: "GICO ABOISSO COMOE", lat: 5.4678, lng: -3.2081 }
-];
+// GICO Headquarters coordinates (Bonoua)
+const BONOUA_HQ = { name: "Siège (Bonoua)", lat: 5.27138, lng: -3.59472 };
 
 // Haversine formula to calculate distance in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -43,22 +38,6 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
-}
-
-// Get the nearest GICO branch and the distance to it
-function getNearestBranch(lat: number, lng: number) {
-  let nearest = GICO_BRANCHES[0];
-  let minDistance = calculateDistance(lat, lng, nearest.lat, nearest.lng);
-  
-  for (let i = 1; i < GICO_BRANCHES.length; i++) {
-    const dist = calculateDistance(lat, lng, GICO_BRANCHES[i].lat, GICO_BRANCHES[i].lng);
-    if (dist < minDistance) {
-      minDistance = dist;
-      nearest = GICO_BRANCHES[i];
-    }
-  }
-  
-  return { branch: nearest, distance: minDistance };
 }
 
 export default function RHPage() {
@@ -935,7 +914,7 @@ export default function RHPage() {
                     </button>
 
                     {gpsCoords && (() => {
-                      const { branch, distance } = getNearestBranch(gpsCoords.lat, gpsCoords.lng);
+                      const distance = calculateDistance(gpsCoords.lat, gpsCoords.lng, BONOUA_HQ.lat, BONOUA_HQ.lng);
                       let badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30';
                       let badgeText = 'Précision faible';
                       let signalColor = 'bg-rose-500';
@@ -962,11 +941,11 @@ export default function RHPage() {
 
                           <div className="space-y-1.5 border-t border-slate-200/40 dark:border-slate-800/40 pt-2 text-[11px]">
                             <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
-                              <span>Agence la plus proche:</span>
-                              <span className="font-bold text-slate-800 dark:text-white">{branch.name}</span>
+                              <span>Référence :</span>
+                              <span className="font-bold text-slate-800 dark:text-white">{BONOUA_HQ.name}</span>
                             </div>
                             <div className="flex justify-between items-center text-slate-500 dark:text-slate-400">
-                              <span>Distance:</span>
+                              <span>Distance :</span>
                               <span className="font-mono font-bold text-primary-600 dark:text-primary-400">
                                 {distance < 1 ? `${(distance * 1000).toFixed(0)} m` : `${distance.toFixed(2)} km`}
                               </span>
@@ -1276,7 +1255,7 @@ export default function RHPage() {
             </div>
           </div>
         </div>
-      ) : activeTab === 'interns' ? (
+      ) : activeTab === 'interns' && isAdminOrRH ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Pointage Borne List */}
           <div className="lg:col-span-2 space-y-6">
@@ -1598,7 +1577,7 @@ export default function RHPage() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'team' && isAdminOrRH ? (
         /* Team Supervision View */
         <div className="space-y-6">
           {/* Filters Card */}
@@ -1764,7 +1743,7 @@ export default function RHPage() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Pointage QR Code Modal for Scanning auto point */}
       {urlToken && (

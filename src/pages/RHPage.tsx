@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 // GICO Headquarters coordinates (Bonoua)
-const BONOUA_HQ = { name: "Siège (Bonoua)", lat: 5.27138, lng: -3.59472 };
+const BONOUA_HQ = { name: "Siège (Bonoua)", lat: 5.281083, lng: -3.597778 };
 
 // Haversine formula to calculate distance in km
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {

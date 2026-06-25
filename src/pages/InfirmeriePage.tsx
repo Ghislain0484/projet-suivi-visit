@@ -1591,7 +1591,7 @@ export default function InfirmeriePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">Type d'événement *</label>
-                  <select value={consultationForm.request_type} onChange={(e) => setForm(p => ({ ...p, request_type: e.target.value as any }))} className="input" required>
+                  <select value={consultationForm.request_type} onChange={(e) => setConsultationForm(p => ({ ...p, request_type: e.target.value as any }))} className="input" required>
                     <option value="consultation">Consultation Infirmerie</option>
                     <option value="sickness">Signalement Maladie</option>
                     <option value="rest">Repos Médical</option>

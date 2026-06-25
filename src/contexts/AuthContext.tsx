@@ -16,7 +16,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Helper function to prevent database queries from hanging infinitely (e.g. due to RLS recursion)
-const withTimeout = async <T,>(promise: Promise<T> | PromiseLike<T>, ms = 4000): Promise<T> => {
+const withTimeout = async <T,>(promise: Promise<T> | PromiseLike<T>, ms = 15000): Promise<T> => {
   let timeoutId: any;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error('Database query timed out')), ms);

@@ -26,9 +26,13 @@ export default function LoginPage() {
     const { error } = await signIn(email, password);
 
     if (error) {
-      setError(error.message === 'Invalid login credentials'
-        ? 'Email ou mot de passe incorrect'
-        : 'Une erreur est survenue. Veuillez réessayer.');
+      if (error.message === 'Invalid login credentials') {
+        setError('Email ou mot de passe incorrect');
+      } else if (error.message === 'Email not confirmed') {
+        setError('Votre e-mail n\'est pas confirmé. Veuillez vérifier votre boîte de réception pour valider votre compte.');
+      } else {
+        setError(error.message || 'Une erreur est survenue. Veuillez réessayer.');
+      }
       setIsLoading(false);
     } else {
       navigate(from, { replace: true });

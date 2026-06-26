@@ -75,9 +75,9 @@ export default function AgendaPage() {
       collaborator:profiles(*)
     `);
 
-    // Restrict standard collaborators to see only their appointments
+    // Restrict standard collaborators to see only their appointments (assigned or created by them)
     if (profile && profile.role === 'collaborator') {
-      query = query.eq('assigned_to', profile.id);
+      query = query.or(`assigned_to.eq.${profile.id},created_by.eq.${profile.id}`);
     }
 
     const { data, error } = await query;
@@ -210,7 +210,16 @@ export default function AgendaPage() {
   };
 
   // Check roles permissions
-  const canModify = profile && ['admin', 'reception', 'director'].includes(profile.role);
+  const isNew = !selectedAppt;
+  const hasEditPermission = () => {
+    if (!profile) return false;
+    if (['admin', 'reception', 'director'].includes(profile.role)) return true;
+    if (selectedAppt) {
+      return selectedAppt.created_by === profile.id || selectedAppt.assigned_to === profile.id;
+    }
+    return true;
+  };
+  const canEdit = isNew || hasEditPermission();
 
   return (
     <div className="space-y-6">
@@ -226,7 +235,7 @@ export default function AgendaPage() {
           </p>
         </div>
 
-        {canModify && (
+        {profile && (
           <button onClick={() => openAddModal()} className="btn-primary shrink-0">
             <Plus className="w-4.5 h-4.5 mr-2" />
             Planifier un RDV
@@ -272,7 +281,7 @@ export default function AgendaPage() {
         </div>
       ) : (
         <div className="card p-6 overflow-x-auto scrollbar-thin">
-          <div className="min-w-[700px] grid grid-cols-7 gap-4">
+          <div className={`min-w-[700px] grid gap-4 ${view === 'day' ? 'grid-cols-1' : 'grid-cols-7'}`}>
             {/* Header labels */}
             {view === 'month' ? (
               // Month days list
@@ -281,7 +290,7 @@ export default function AgendaPage() {
                 return (
                   <div
                     key={day.toString()}
-                    onClick={() => canModify && openAddModal(day)}
+                    onClick={() => openAddModal(day)}
                     className={`min-h-[100px] border border-slate-100 dark:border-slate-800/60 p-2 rounded-2xl flex flex-col justify-between hover:bg-slate-50/50 dark:hover:bg-slate-900/20 cursor-pointer ${
                       isSameDay(new Date(), day) ? 'bg-primary-50/20 dark:bg-primary-950/10 border-primary-500/30' : ''
                     }`}
@@ -380,7 +389,7 @@ export default function AgendaPage() {
                   className="input"
                   placeholder="Ex: Réunion projet construction"
                   required
-                  disabled={!canModify}
+                  disabled={!canEdit}
                 />
               </div>
 
@@ -391,7 +400,7 @@ export default function AgendaPage() {
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
                   className="input min-h-[80px]"
                   placeholder="Notes complémentaires..."
-                  disabled={!canModify}
+                  disabled={!canEdit}
                 />
               </div>
 
@@ -402,7 +411,7 @@ export default function AgendaPage() {
                     value={form.visitor_id}
                     onChange={(e) => setForm((p) => ({ ...p, visitor_id: e.target.value }))}
                     className="input"
-                    disabled={!canModify}
+                    disabled={!canEdit}
                   >
                     <option value="">-- Aucun --</option>
                     {visitors.map((v) => (
@@ -420,7 +429,7 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((p) => ({ ...p, assigned_to: e.target.value }))}
                     className="input"
                     required
-                    disabled={!canModify}
+                    disabled={!canEdit}
                   >
                     <option value="">-- Choisir --</option>
                     {collaborators.map((c) => (
@@ -441,7 +450,7 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
                     className="input"
                     required
-                    disabled={!canModify}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
@@ -452,7 +461,7 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((p) => ({ ...p, start_time: e.target.value }))}
                     className="input"
                     required
-                    disabled={!canModify}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div>
@@ -463,13 +472,13 @@ export default function AgendaPage() {
                     onChange={(e) => setForm((p) => ({ ...p, end_time: e.target.value }))}
                     className="input"
                     required
-                    disabled={!canModify}
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
 
               <div className="flex justify-between items-center pt-6 border-t border-slate-100 dark:border-slate-800/80">
-                {selectedAppt && canModify ? (
+                {selectedAppt && hasEditPermission() ? (
                   <button
                     type="button"
                     onClick={() => handleDelete(selectedAppt.id)}
@@ -486,7 +495,7 @@ export default function AgendaPage() {
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-xs">
                     Fermer
                   </button>
-                  {canModify && (
+                  {canEdit && (
                     <button type="submit" disabled={saving} className="btn-primary text-xs px-5">
                       {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1.5" />}
                       Enregistrer

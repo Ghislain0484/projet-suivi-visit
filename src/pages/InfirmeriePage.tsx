@@ -33,7 +33,42 @@ import {
 export default function InfirmeriePage() {
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'dossiers' | 'pharmacy' | 'agenda' | 'prescription' | 'exams' | 'rests'>('dashboard');
+
+  // Rôles
+  const isNurse = profile && ['nurse', 'admin'].includes(profile.role);
+  const isRHOrDirector = profile && ['admin', 'director', 'accounting', 'reception'].includes(profile.role);
+
+  // Tabs list configuration
+  const getAvailableTabs = () => {
+    if (isNurse) {
+      return [
+        { id: 'dashboard', label: 'Tableau de bord' },
+        { id: 'dossiers', label: 'Dossiers' },
+        { id: 'pharmacy', label: 'Pharmacie' },
+        { id: 'agenda', label: 'Agenda' },
+        { id: 'prescription', label: 'Ordonnances' },
+        { id: 'exams', label: 'Examens' },
+        { id: 'rests', label: 'Repos Médicaux' }
+      ];
+    }
+    if (isRHOrDirector) {
+      return [
+        { id: 'rests', label: 'Repos Médicaux' },
+        { id: 'pharmacy', label: 'Pharmacie' }
+      ];
+    }
+    return [
+      { id: 'personal', label: 'Mon Espace Santé' },
+      { id: 'pharmacy', label: 'Pharmacie' }
+    ];
+  };
+
+  const tabs = getAvailableTabs();
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (isNurse) return 'dashboard';
+    if (isRHOrDirector) return 'rests';
+    return 'personal';
+  });
 
   // Shared / Role Metadata
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
@@ -139,10 +174,6 @@ export default function InfirmeriePage() {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Rôles
-  const isNurse = profile && ['nurse', 'admin'].includes(profile.role);
-  const isRHOrDirector = profile && ['admin', 'director', 'accounting', 'reception'].includes(profile.role);
-
   useEffect(() => {
     fetchMetadata();
     fetchData();
@@ -179,26 +210,34 @@ export default function InfirmeriePage() {
 
         const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
         if (rst) setRests(rst as any);
-      } else if (isRHOrDirector) {
-        // Fetch only restricted HR medical rests data
-        const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
-        if (rst) setRests(rst as any);
-      } else if (user) {
-        // Collaborator restricted view
-        const { data: myFile } = await supabase.from('medical_files').select('*, profile:profiles(*)').eq('user_id', user.id).maybeSingle();
-        if (myFile) setSelectedFile(myFile as any);
+      } else {
+        // Fetch pharmacy products if active tab is pharmacy
+        if (activeTab === 'pharmacy') {
+          const { data: prod } = await supabase.from('pharmacy_products').select('*').order('name');
+          if (prod) setProducts(prod as any);
+        }
 
-        const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles(*)').eq('user_id', user.id).order('created_at', { ascending: false });
-        if (reqs) setConsultations(reqs as any);
+        if (isRHOrDirector) {
+          // Fetch only restricted HR medical rests data
+          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
+          if (rst) setRests(rst as any);
+        } else if (user) {
+          // Collaborator restricted view
+          const { data: myFile } = await supabase.from('medical_files').select('*, profile:profiles(*)').eq('user_id', user.id).maybeSingle();
+          if (myFile) setSelectedFile(myFile as any);
 
-        const { data: appt } = await supabase.from('medical_appointments').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
-        if (appt) setAppointments(appt as any);
+          const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles(*)').eq('user_id', user.id).order('created_at', { ascending: false });
+          if (reqs) setConsultations(reqs as any);
 
-        const { data: exm } = await supabase.from('medical_exams').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
-        if (exm) setExams(exm as any);
+          const { data: appt } = await supabase.from('medical_appointments').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
+          if (appt) setAppointments(appt as any);
 
-        const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').eq('employee_id', user.id).order('created_at', { ascending: false });
-        if (rst) setRests(rst as any);
+          const { data: exm } = await supabase.from('medical_exams').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
+          if (exm) setExams(exm as any);
+
+          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').eq('employee_id', user.id).order('created_at', { ascending: false });
+          if (rst) setRests(rst as any);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -551,24 +590,22 @@ export default function InfirmeriePage() {
           </p>
         </div>
 
-        {/* Switch tabs for Nurse */}
-        {isNurse && (
-          <div className="flex flex-wrap bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 gap-1">
-            {(['dashboard', 'dossiers', 'pharmacy', 'agenda', 'prescription', 'exams', 'rests'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 rounded-xl text-[10px] font-black capitalize transition-all ${
-                  activeTab === tab
-                    ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                {tab === 'rests' ? 'Repos Médicaux' : tab === 'exams' ? 'Examens' : tab === 'dossiers' ? 'Dossiers' : tab}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Switch tabs for all roles */}
+        <div className="flex flex-wrap bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black capitalize transition-all ${
+                activeTab === tab.id
+                  ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Screen Area - Content */}
@@ -900,82 +937,6 @@ export default function InfirmeriePage() {
                 </div>
               )}
 
-              {/* TAB 3: PHARMACIE & STOCK */}
-              {activeTab === 'pharmacy' && (
-                <div className="space-y-6">
-                  {/* Actions buttons */}
-                  <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border">
-                    <h3 className="font-bold text-xs uppercase text-slate-500">Boîte à Pharmacie GICO</h3>
-                    <div className="flex gap-2">
-                      <button onClick={() => setShowMovementModal(true)} className="btn-secondary text-xs rounded-xl">
-                        Mouvement Stock (Entrée/Sortie)
-                      </button>
-                      <button onClick={() => setShowProductModal(true)} className="btn-primary text-xs rounded-xl">
-                        Ajouter Produit
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Stock Registry */}
-                  <div className="card">
-                    <div className="card-header bg-slate-50/50">
-                      <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider">État des stocks médicaux</h3>
-                    </div>
-                    <div className="card-body p-0">
-                      {products.length === 0 ? (
-                        <p className="text-sm text-slate-400 italic text-center py-8">Aucun produit en stock.</p>
-                      ) : (
-                        <div className="table-container border-0 rounded-none shadow-none">
-                          <table className="table text-xs">
-                            <thead>
-                              <tr>
-                                <th>Produit</th>
-                                <th>Référence</th>
-                                <th>Catégorie</th>
-                                <th>Quantité</th>
-                                <th>Seuil Min</th>
-                                <th>Date Péremption</th>
-                                <th>Localisation</th>
-                                <th>Statut</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {products.map(p => {
-                                const isExpired = p.expiration_date && new Date(p.expiration_date) < new Date();
-                                const isLow = p.quantity <= p.min_threshold;
-                                return (
-                                  <tr key={p.id}>
-                                    <td className="font-bold text-slate-800 dark:text-white">{p.name}</td>
-                                    <td className="font-mono">{p.reference || '-'}</td>
-                                    <td>{getCategoryLabel(p.category)}</td>
-                                    <td className="font-bold font-mono">{p.quantity}</td>
-                                    <td className="font-mono text-slate-400">{p.min_threshold}</td>
-                                    <td className={`font-mono ${isExpired ? 'text-rose-600 font-bold' : ''}`}>
-                                      {p.expiration_date ? format(new Date(p.expiration_date), 'dd/MM/yyyy') : '-'}
-                                    </td>
-                                    <td>{p.location || '-'}</td>
-                                    <td>
-                                      {isExpired ? (
-                                        <span className="badge badge-danger">Périmé</span>
-                                      ) : p.quantity === 0 ? (
-                                        <span className="badge badge-danger">Rupture</span>
-                                      ) : isLow ? (
-                                        <span className="badge badge-warning">Alerte</span>
-                                      ) : (
-                                        <span className="badge badge-success">OK</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* TAB 4: AGENDA MEDICAL */}
               {activeTab === 'agenda' && (
@@ -1294,6 +1255,105 @@ export default function InfirmeriePage() {
             </>
           )}
 
+          {/* TAB 3: PHARMACIE & STOCK (Visible to everyone) */}
+          {activeTab === 'pharmacy' && (
+            <div className="space-y-6">
+              {/* Actions buttons */}
+              <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border">
+                <h3 className="font-bold text-xs uppercase text-slate-500">Boîte à Pharmacie GICO</h3>
+                <div className="flex gap-2">
+                  {isNurse ? (
+                    <>
+                      <button onClick={() => setShowMovementModal(true)} className="btn-secondary text-xs rounded-xl">
+                        Mouvement Stock (Entrée/Sortie)
+                      </button>
+                      <button onClick={() => setShowProductModal(true)} className="btn-primary text-xs rounded-xl">
+                        Ajouter Produit
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setAppointmentForm({
+                          user_id: user?.id || '',
+                          date: format(new Date(), 'yyyy-MM-dd'),
+                          time: '09:00',
+                          purpose: 'consultation' as any,
+                          priority: 'normal' as any,
+                          notes: '',
+                        });
+                        setShowAppointmentModal(true);
+                      }}
+                      className="btn-primary text-xs rounded-xl flex items-center gap-1.5 shadow-sm hover:scale-[1.02] transition-transform"
+                    >
+                      <Calendar className="w-4 h-4" />
+                      Prendre RDV Médical
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Stock Registry */}
+              <div className="card">
+                <div className="card-header bg-slate-50/50">
+                  <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider">État des stocks médicaux</h3>
+                </div>
+                <div className="card-body p-0">
+                  {products.length === 0 ? (
+                    <p className="text-sm text-slate-400 italic text-center py-8">Aucun produit en stock.</p>
+                  ) : (
+                    <div className="table-container border-0 rounded-none shadow-none">
+                      <table className="table text-xs">
+                        <thead>
+                          <tr>
+                            <th>Produit</th>
+                            <th>Référence</th>
+                            <th>Catégorie</th>
+                            <th>Quantité</th>
+                            <th>Seuil Min</th>
+                            <th>Date Péremption</th>
+                            <th>Localisation</th>
+                            <th>Statut</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {products.map(p => {
+                            const isExpired = p.expiration_date && new Date(p.expiration_date) < new Date();
+                            const isLow = p.quantity <= p.min_threshold;
+                            return (
+                              <tr key={p.id}>
+                                <td className="font-bold text-slate-800 dark:text-white">{p.name}</td>
+                                <td className="font-mono">{p.reference || '-'}</td>
+                                <td>{getCategoryLabel(p.category)}</td>
+                                <td className="font-bold font-mono">{p.quantity}</td>
+                                <td className="font-mono text-slate-400">{p.min_threshold}</td>
+                                <td className={`font-mono ${isExpired ? 'text-rose-600 font-bold' : ''}`}>
+                                  {p.expiration_date ? format(new Date(p.expiration_date), 'dd/MM/yyyy') : '-'}
+                                </td>
+                                <td>{p.location || '-'}</td>
+                                <td>
+                                  {isExpired ? (
+                                    <span className="badge badge-danger">Périmé</span>
+                                  ) : p.quantity === 0 ? (
+                                    <span className="badge badge-danger">Rupture</span>
+                                  ) : isLow ? (
+                                    <span className="badge badge-warning">Alerte</span>
+                                  ) : (
+                                    <span className="badge badge-success">OK</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* B. WORKSPACE RH & DIRECTION (Confidential view - stats only) */}
           {isRHOrDirector && !isNurse && (
             <div className="space-y-6">
@@ -1440,9 +1500,28 @@ export default function InfirmeriePage() {
               <div className="lg:col-span-2 space-y-6">
                 <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border">
                   <h3 className="font-bold text-xs uppercase text-slate-500">Mes Consultations & Soins</h3>
-                  <button onClick={() => setShowConsultationModal(true)} className="btn-primary text-xs rounded-xl">
-                    Déclarer un Soin / Consultation
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setAppointmentForm({
+                          user_id: user?.id || '',
+                          date: format(new Date(), 'yyyy-MM-dd'),
+                          time: '09:00',
+                          purpose: 'consultation' as any,
+                          priority: 'normal' as any,
+                          notes: '',
+                        });
+                        setShowAppointmentModal(true);
+                      }}
+                      className="btn-secondary text-xs rounded-xl flex items-center gap-1.5 py-2 px-4 shadow-sm hover:scale-[1.02] transition-transform"
+                    >
+                      <Calendar className="w-4 h-4 text-rose-500" />
+                      Prendre RDV Médical
+                    </button>
+                    <button onClick={() => setShowConsultationModal(true)} className="btn-primary text-xs rounded-xl">
+                      Déclarer un Soin / Consultation
+                    </button>
+                  </div>
                 </div>
 
                 <div className="card">
@@ -1775,12 +1854,21 @@ export default function InfirmeriePage() {
             <form onSubmit={handleSaveAppointment} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="label">Patient *</label>
-                <select value={appointmentForm.user_id} onChange={(e) => setAppointmentForm(p => ({ ...p, user_id: e.target.value }))} className="input" required>
-                  <option value="">Sélectionner...</option>
-                  {collaborators.map(c => (
-                    <option key={c.id} value={c.id}>{c.full_name}</option>
-                  ))}
-                </select>
+                {isNurse ? (
+                  <select value={appointmentForm.user_id} onChange={(e) => setAppointmentForm(p => ({ ...p, user_id: e.target.value }))} className="input" required>
+                    <option value="">Sélectionner...</option>
+                    {collaborators.map(c => (
+                      <option key={c.id} value={c.id}>{c.full_name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={profile?.full_name || ''}
+                    className="input bg-slate-100 dark:bg-slate-900 border-slate-200/50"
+                    disabled
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

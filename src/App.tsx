@@ -1,24 +1,27 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AuthGuard } from './components/AuthGuard';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
-import DashboardPage from './pages/DashboardPage';
-import VisitsListPage from './pages/VisitsListPage';
-import VisitFormPage from './pages/VisitFormPage';
-import VisitDetailPage from './pages/VisitDetailPage';
-import VisitorsListPage from './pages/VisitorsListPage';
-import ServicesListPage from './pages/ServicesListPage';
-import InvoicesListPage from './pages/InvoicesListPage';
-import UsersListPage from './pages/UsersListPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
-import AgendaPage from './pages/AgendaPage';
-import RHPage from './pages/RHPage';
-import MissionsPage from './pages/MissionsPage';
-import PermissionsPage from './pages/PermissionsPage';
-import InfirmeriePage from './pages/InfirmeriePage';
+
+// Lazy load pages for code-splitting
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const VisitsListPage = lazy(() => import('./pages/VisitsListPage'));
+const VisitFormPage = lazy(() => import('./pages/VisitFormPage'));
+const VisitDetailPage = lazy(() => import('./pages/VisitDetailPage'));
+const VisitorsListPage = lazy(() => import('./pages/VisitorsListPage'));
+const ServicesListPage = lazy(() => import('./pages/ServicesListPage'));
+const InvoicesListPage = lazy(() => import('./pages/InvoicesListPage'));
+const UsersListPage = lazy(() => import('./pages/UsersListPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AgendaPage = lazy(() => import('./pages/AgendaPage'));
+const RHPage = lazy(() => import('./pages/RHPage'));
+const MissionsPage = lazy(() => import('./pages/MissionsPage'));
+const PermissionsPage = lazy(() => import('./pages/PermissionsPage'));
+const InfirmeriePage = lazy(() => import('./pages/InfirmeriePage'));
 
 function UnauthorizedPage() {
   return (
@@ -93,7 +96,7 @@ function App() {
             <Route
               path="invoices"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier', 'service_manager']}>
                   <InvoicesListPage />
                 </AuthGuard>
               }
@@ -103,7 +106,7 @@ function App() {
             <Route
               path="reports"
               element={
-                <AuthGuard requiredRoles={['admin', 'director']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager']}>
                   <ReportsPage />
                 </AuthGuard>
               }
@@ -142,7 +145,7 @@ function App() {
             <Route
               path="permissions"
               element={
-                <AuthGuard requiredRoles={['admin', 'director']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager']}>
                   <PermissionsPage />
                 </AuthGuard>
               }

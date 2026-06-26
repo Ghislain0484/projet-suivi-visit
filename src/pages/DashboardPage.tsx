@@ -20,10 +20,12 @@ import {
   DollarSign,
   Activity,
   MapPin,
+  Calendar,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase, Visit, HRPresence, Mission, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMinutes } from 'date-fns';
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInMinutes, subDays } from 'date-fns';
 
 
 interface DashboardStats {
@@ -72,6 +74,7 @@ export default function DashboardPage() {
   const [visitsByService, setVisitsByService] = useState<any[]>([]);
   const [visitTrend, setVisitTrend] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
   
   // Tab control & financial data
   const [activeTab, setActiveTab] = useState<'activity' | 'finance'>('activity');
@@ -82,13 +85,14 @@ export default function DashboardPage() {
   const [presencesToday, setPresencesToday] = useState<HRPresence[]>([]);
   const [activeMissions, setActiveMissions] = useState<Mission[]>([]);
   const [allUsers, setAllUsers] = useState<Profile[]>([]);
+  const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
 
-    // Subscribe to realtime visits queue
-    const visitsChannel = supabase
-      .channel('dashboard-visits')
+    // Subscribe to realtime visits and appointments
+    const dashboardChannel = supabase
+      .channel('dashboard-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'visits' },
@@ -96,10 +100,17 @@ export default function DashboardPage() {
           fetchDashboardData();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'appointments' },
+        () => {
+          fetchDashboardData();
+        }
+      )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(visitsChannel);
+      supabase.removeChannel(dashboardChannel);
     };
   }, [profile]);
 
@@ -137,6 +148,7 @@ export default function DashboardPage() {
         usersRes,
         recentPaymentsRes,
         trendVisitsRes,
+        appointmentsRes,
       ] = await Promise.all([
         supabase.from('services').select('*').eq('is_active', true),
         supabase.from('visits').select('*', { count: 'exact', head: true }).gte('arrival_time', todayStart).lte('arrival_time', todayEnd),
@@ -152,6 +164,7 @@ export default function DashboardPage() {
         supabase.from('profiles').select('*').eq('is_active', true),
         supabase.from('invoices').select('*, visit:visits(*, visitor:visitors(*))').gt('amount_paid', 0).order('updated_at', { ascending: false }).limit(5),
         supabase.from('visits').select('id, arrival_time').gte('arrival_time', sevenDaysAgoStart).lte('arrival_time', todayEnd),
+        supabase.from('appointments').select('*, visitor:visitors(*), collaborator:profiles(*)').gte('start_time', todayStart).lte('start_time', todayEnd).order('start_time', { ascending: true }),
       ]);
 
       if (visitsQueueRes.data) setVisitsQueue(visitsQueueRes.data as any);
@@ -159,6 +172,12 @@ export default function DashboardPage() {
       if (missionsRes.data) setActiveMissions(missionsRes.data as any);
       if (usersRes.data) setAllUsers(usersRes.data);
       if (recentPaymentsRes.data) setRecentPayments(recentPaymentsRes.data as any);
+
+      let appts = appointmentsRes.data || [];
+      if (profile.role === 'collaborator') {
+        appts = appts.filter((a: any) => a.assigned_to === profile.id || a.created_by === profile.id);
+      }
+      setTodayAppointments(appts);
 
       // Calculations
       const invoices = invoicesRes.data || [];
@@ -561,6 +580,47 @@ export default function DashboardPage() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+
+                  {/* Today's Appointments Card */}
+                  <div className="card">
+                    <div className="card-header bg-rose-500/5 dark:bg-rose-500/10">
+                      <h3 className="font-extrabold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-rose-500" />
+                        Rendez-vous du Jour ({todayAppointments.length})
+                      </h3>
+                    </div>
+                    <div className="card-body p-4 space-y-3 max-h-[300px] overflow-y-auto scrollbar-thin">
+                      {todayAppointments.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic text-center py-8">Aucun rendez-vous aujourd'hui</p>
+                      ) : (
+                        todayAppointments.map((appt) => {
+                          const time = appt.start_time ? format(new Date(appt.start_time), 'HH:mm') : 'N/A';
+                          return (
+                            <div 
+                              key={appt.id} 
+                              className="p-3 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-200/40 dark:border-slate-800/40 space-y-2 hover:border-slate-350 dark:hover:border-slate-700 transition-all cursor-pointer hover:scale-[1.01]" 
+                              onClick={() => navigate('/agenda')}
+                            >
+                              <div className="flex justify-between items-start gap-2">
+                                <p className="text-xs font-bold text-slate-800 dark:text-white line-clamp-1">{appt.title}</p>
+                                <span className="px-2 py-0.5 rounded text-[9px] font-black bg-primary-100 text-primary-700 dark:bg-primary-950/40 dark:text-primary-400 font-mono shrink-0">{time}</span>
+                              </div>
+                              {appt.visitor && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                                  Visiteur : {appt.visitor.first_name} {appt.visitor.last_name} {appt.visitor.company ? `(${appt.visitor.company})` : ''}
+                                </p>
+                              )}
+                              {profile?.role !== 'collaborator' && appt.collaborator && (
+                                <p className="text-[9px] text-slate-400">
+                                  Pour : <span className="font-semibold">{appt.collaborator.full_name}</span>
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 </div>

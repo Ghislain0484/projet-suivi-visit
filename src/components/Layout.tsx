@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -31,15 +31,15 @@ import { supabase, Notification as NotificationType } from '../lib/supabase';
 const navItems = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
   { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
-  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception', 'lawyer'] },
-  { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
+  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception', 'lawyer', 'service_manager'] },
+  { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse', 'lawyer'] },
   { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator'] },
-  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director'] },
+  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director', 'service_manager'] },
   { path: '/infirmerie', label: 'Infirmerie', icon: HeartPulse, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager'] },
-  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier'] },
-  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director'] },
+  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier', 'service_manager'] },
+  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director', 'service_manager'] },
   { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin', 'director'] },
   { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin', 'director'] },
 ];
@@ -480,7 +480,16 @@ export default function Layout() {
         {/* Dynamic Page Content */}
         <main className="flex-1 p-6 sm:p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto animate-slide-in-bottom">
-            <Outlet />
+            <Suspense
+              fallback={
+                <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600"></div>
+                  <p className="text-xs font-bold text-slate-400 animate-pulse">Chargement du module...</p>
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
           </div>
         </main>
 

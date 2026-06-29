@@ -55,6 +55,8 @@ export default function VisitDetailPage() {
   const [selectedItems, setSelectedItems] = useState<{ item: ServiceItem; quantity: number }[]>([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const [customItemName, setCustomItemName] = useState('');
+  const [customItemPrice, setCustomItemPrice] = useState(0);
 
   const [invoiceForm, setInvoiceForm] = useState({
     is_billable: false,
@@ -77,18 +79,23 @@ export default function VisitDetailPage() {
 
   useEffect(() => {
     const fetchCatalog = async () => {
-      if (showInvoiceForm && visit?.service_id) {
+      if (showInvoiceForm) {
         const { data } = await supabase
           .from('service_items')
-          .select('*')
-          .eq('service_id', visit.service_id)
+          .select('*, service:services(name)')
           .eq('is_active', true)
           .order('name');
-        if (data) setCatalogItems(data);
+        if (data) {
+          const formatted = data.map(item => ({
+            ...item,
+            name: (item as any).service ? `${item.name} (${(item as any).service.name})` : item.name
+          }));
+          setCatalogItems(formatted);
+        }
       }
     };
     fetchCatalog();
-  }, [showInvoiceForm, visit?.service_id]);
+  }, [showInvoiceForm]);
 
   const fetchVisit = async () => {
     setLoading(true);
@@ -139,13 +146,25 @@ export default function VisitDetailPage() {
           .eq('invoice_id', invoiceData.id);
         
         if (invItems) {
-          const formatted = invItems
-            .filter((ii: any) => ii.service_item !== null)
-            .map((ii: any) => ({
-              item: ii.service_item,
-              quantity: ii.quantity
-            }));
-          setSelectedItems(formatted);
+          const formatted = invItems.map((ii: any) => {
+            if (ii.service_item) {
+              return {
+                item: ii.service_item,
+                quantity: ii.quantity
+              };
+            } else {
+              return {
+                item: {
+                  id: ii.id,
+                  name: ii.custom_name || 'Prestation personnalisée',
+                  price: Number(ii.unit_price),
+                  is_custom: true
+                },
+                quantity: ii.quantity
+              };
+            }
+          });
+          setSelectedItems(formatted as any);
         }
       } else {
         setInvoice(null);
@@ -395,13 +414,27 @@ export default function VisitDetailPage() {
 
     // Insert invoice items if billable
     if (invoiceForm.is_billable && selectedItems.length > 0) {
-      const itemsToInsert = selectedItems.map((si) => ({
-        invoice_id: invoiceId,
-        service_item_id: si.item.id,
-        quantity: si.quantity,
-        unit_price: si.item.price,
-        total_price: si.item.price * si.quantity,
-      }));
+      const itemsToInsert = selectedItems.map((si) => {
+        if ((si.item as any).is_custom) {
+          return {
+            invoice_id: invoiceId,
+            service_item_id: null,
+            custom_name: si.item.name,
+            quantity: si.quantity,
+            unit_price: si.item.price,
+            total_price: si.item.price * si.quantity,
+          };
+        } else {
+          return {
+            invoice_id: invoiceId,
+            service_item_id: si.item.id,
+            custom_name: null,
+            quantity: si.quantity,
+            unit_price: si.item.price,
+            total_price: si.item.price * si.quantity,
+          };
+        }
+      });
 
       await supabase.from('invoice_items').insert(itemsToInsert);
     }
@@ -1620,6 +1653,48 @@ export default function VisitDetailPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div className="border-t border-slate-200/50 dark:border-slate-800/50 pt-3.5 space-y-2">
+                      <label className="label font-bold text-slate-700 dark:text-slate-300">Ajouter une prestation libre (hors catalogue)</label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nom de la prestation..."
+                          value={customItemName}
+                          onChange={(e) => setCustomItemName(e.target.value)}
+                          className="input bg-white dark:bg-slate-900 py-1.5 text-xs flex-1"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Prix (XOF)"
+                          value={customItemPrice || ''}
+                          onChange={(e) => setCustomItemPrice(Number(e.target.value))}
+                          className="input bg-white dark:bg-slate-900 py-1.5 text-xs w-32"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!customItemName || customItemPrice <= 0) return;
+                            const newItem = {
+                              item: {
+                                id: 'custom-' + Date.now(),
+                                name: customItemName,
+                                price: customItemPrice,
+                                is_custom: true,
+                              } as any,
+                              quantity: 1,
+                            };
+                            setSelectedItems([...selectedItems, newItem]);
+                            setCustomItemName('');
+                            setCustomItemPrice(0);
+                          }}
+                          className="btn-secondary text-xs rounded-xl py-1.5 px-4 flex items-center justify-center gap-1 shrink-0"
+                        >
+                          <Plus className="w-4 h-4 text-primary-500" />
+                          Ajouter
+                        </button>
+                      </div>
                     </div>
 
                     {selectedItems.length > 0 ? (

@@ -809,7 +809,7 @@ export default function InvoicesListPage() {
               {invoiceItems.length > 0 ? (
                 invoiceItems.map((si, idx) => (
                   <tr key={idx} className="border-b border-slate-100 text-slate-700 font-medium">
-                    <td className="py-3 pr-4 font-bold">{si.service_item?.name || 'Prestation'}</td>
+                    <td className="py-3 pr-4 font-bold">{si.custom_name || si.service_item?.name || 'Prestation'}</td>
                     <td className="py-3 px-4 text-right">{(si.unit_price || 0).toLocaleString('fr-FR')} XOF</td>
                     <td className="py-3 px-4 text-center">{si.quantity}</td>
                     <td className="py-3 pl-4 text-right font-bold">{(si.total_price || 0).toLocaleString('fr-FR')} XOF</td>

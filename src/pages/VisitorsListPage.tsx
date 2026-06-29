@@ -519,7 +519,7 @@ export default function VisitorsListPage() {
                                       {visit.invoice.items.map((item: any) => (
                                         <div key={item.id} className="flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/30 p-2 rounded-lg border border-slate-100 dark:border-slate-800/60">
                                           <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                            {item.service_item?.name || 'Prestation'} <span className="text-slate-400">x{item.quantity}</span>
+                                            {item.custom_name || item.service_item?.name || 'Prestation'} <span className="text-slate-400">x{item.quantity}</span>
                                           </span>
                                           <span className="font-bold text-slate-900 dark:text-white">
                                             {formatPrice(item.total_price)}

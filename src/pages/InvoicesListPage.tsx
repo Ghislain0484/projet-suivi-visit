@@ -265,8 +265,8 @@ export default function InvoicesListPage() {
     );
   };
 
-  const canEdit = profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'director';
-  const canRecordPayment = profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'cashier' || profile?.role === 'director';
+  const canEdit = profile && ['admin', 'director', 'accounting', 'service_manager'].includes(profile.role);
+  const canRecordPayment = profile && ['admin', 'director', 'accounting', 'cashier', 'service_manager'].includes(profile.role);
 
   return (
     <div className="space-y-6">
@@ -562,7 +562,7 @@ export default function InvoicesListPage() {
                               <Edit className="w-4 h-4 text-gray-600" />
                             </button>
                           )}
-                          {profile && ['admin', 'director'].includes(profile.role) && (
+                          {profile && ['admin', 'director', 'service_manager'].includes(profile.role) && (
                             <button
                               onClick={() => handleDeleteInvoice(invoice.id, (invoice as any).visit?.visit_code || '')}
                               className="p-2 hover:bg-rose-50 rounded-lg transition-colors text-slate-400 hover:text-rose-600"

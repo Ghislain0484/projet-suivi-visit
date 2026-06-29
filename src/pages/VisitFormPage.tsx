@@ -191,6 +191,66 @@ export default function VisitFormPage() {
     setAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const triggerVisitNotification = async (visit: any) => {
+    try {
+      const { data: settings } = await supabase
+        .from('automation_settings')
+        .select('*')
+        .eq('provider', 'n8n_whatsapp')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!settings || !settings.webhook_url) {
+        return;
+      }
+
+      const payload = {
+        event_type: 'visit_created',
+        visit: {
+          id: visit.id,
+          visit_code: visit.visit_code,
+          purpose: visit.purpose,
+          person_to_meet: visit.person_to_meet || '',
+          branch: visit.branch,
+          status: visit.status || 'in_progress',
+          arrival_time: visit.arrival_time
+        }
+      };
+
+      let status = 'success';
+      let error_message = null;
+
+      try {
+        const res = await fetch(settings.webhook_url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Automation-Secret': settings.secret_key || ''
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          throw new Error(`Erreur HTTP: ${res.status}`);
+        }
+      } catch (err: any) {
+        status = 'failed';
+        error_message = err.message || 'Erreur réseau';
+      }
+
+      // Log the notification attempt
+      await supabase.from('notification_logs').insert({
+        event_type: 'visit_created',
+        recipient_name: 'n8n Webhook',
+        recipient_phone: 'N/A',
+        payload,
+        status,
+        error_message
+      });
+    } catch (err) {
+      console.error('Erreur webhook notification:', err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -277,6 +337,9 @@ export default function VisitFormPage() {
             is_read: false
           });
         }
+
+        // Trigger n8n webhook notifications
+        triggerVisitNotification(newVisit);
       }
 
       // Log activity

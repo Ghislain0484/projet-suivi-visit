@@ -164,7 +164,7 @@ export default function DashboardPage() {
         supabase.from('profiles').select('*').eq('is_active', true),
         supabase.from('invoices').select('*, visit:visits(*, visitor:visitors(*))').gt('amount_paid', 0).order('updated_at', { ascending: false }).limit(5),
         supabase.from('visits').select('id, arrival_time').gte('arrival_time', sevenDaysAgoStart).lte('arrival_time', todayEnd),
-        supabase.from('appointments').select('*, visitor:visitors(*), collaborator:profiles(*)').gte('start_time', todayStart).lte('start_time', todayEnd).order('start_time', { ascending: true }),
+        supabase.from('appointments').select('*, visitor:visitors(*), collaborator:profiles!appointments_assigned_to_fkey(*)').gte('start_time', todayStart).lte('start_time', todayEnd).order('start_time', { ascending: true }),
       ]);
 
       if (visitsQueueRes.data) setVisitsQueue(visitsQueueRes.data as any);

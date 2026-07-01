@@ -100,7 +100,7 @@ export default function AgendaPage() {
       let apptQuery = supabase.from('appointments').select(`
         *,
         visitor:visitors(*),
-        collaborator:profiles(*)
+        collaborator:profiles!appointments_assigned_to_fkey(*)
       `);
       if (profile && profile.role === 'collaborator') {
         apptQuery = apptQuery.or(`assigned_to.eq.${profile.id},created_by.eq.${profile.id}`);

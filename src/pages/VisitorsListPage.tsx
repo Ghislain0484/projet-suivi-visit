@@ -178,7 +178,7 @@ export default function VisitorsListPage() {
         .from('appointments')
         .select(`
           *,
-          collaborator:profiles(*)
+          collaborator:profiles!appointments_assigned_to_fkey(*)
         `)
         .eq('visitor_id', visitor.id)
         .order('start_time', { ascending: false });

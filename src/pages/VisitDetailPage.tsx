@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase, Visit, Invoice, Comment, VisitFollowUp, Service, ServiceItem, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -27,6 +28,7 @@ import {
 export default function VisitDetailPage() {
   const { id } = useParams();
   const { user, profile } = useAuth();
+  const { settings } = useCompanySettings();
   const navigate = useNavigate();
   const [visit, setVisit] = useState<Visit | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
@@ -1913,11 +1915,23 @@ export default function VisitDetailPage() {
         <div className="print-only p-8 max-w-4xl mx-auto bg-white text-black font-sans">
           <div className="flex justify-between items-start border-b-2 border-slate-300 pb-6 mb-6">
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-800">GICO SARL</h1>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Gestion & Intégration de Services Collaboratifs</p>
-              <p className="text-xs text-slate-400 mt-2">RCCM: BF-OUA-2026-B-1234 | IFU: 00123456X</p>
-              <p className="text-xs text-slate-400">Siège Social: Ouagadougou, Burkina Faso</p>
-              <p className="text-xs text-slate-400">Tél: +226 25 30 00 00 | Email: contact@gico.bf</p>
+              <h1 className="text-3xl font-black tracking-tight text-slate-800">{settings.company_name}</h1>
+              {settings.slogan && <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">{settings.slogan}</p>}
+              {(settings.rccm || settings.ifu) && (
+                <p className="text-xs text-slate-400 mt-2">
+                  {settings.rccm ? `RCCM: ${settings.rccm}` : ''} 
+                  {settings.rccm && settings.ifu ? ' | ' : ''} 
+                  {settings.ifu ? `IFU: ${settings.ifu}` : ''}
+                </p>
+              )}
+              {settings.company_address && <p className="text-xs text-slate-400">Siège Social: {settings.company_address}</p>}
+              {(settings.phone || settings.email) && (
+                <p className="text-xs text-slate-400">
+                  {settings.phone ? `Tél: ${settings.phone}` : ''} 
+                  {settings.phone && settings.email ? ' | ' : ''} 
+                  {settings.email ? `Email: ${settings.email}` : ''}
+                </p>
+              )}
             </div>
             <div className="text-right">
               <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
@@ -2005,7 +2019,7 @@ export default function VisitDetailPage() {
               <p className="italic text-slate-300">Bon pour accord & signature</p>
             </div>
             <div className="border-t border-slate-300 pt-6">
-              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">La Caisse GICO</p>
+              <p className="font-bold text-slate-400 uppercase tracking-wider mb-12">La Caisse {settings.company_name}</p>
               <p className="italic text-slate-300">Cachet & Signature</p>
             </div>
           </div>

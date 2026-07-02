@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { CompanySettingsProvider } from './contexts/CompanySettingsContext';
 import { AuthGuard } from './components/AuthGuard';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -37,10 +38,12 @@ function UnauthorizedPage() {
   );
 }
 
+
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <CompanySettingsProvider>
+      <AuthProvider>
+        <BrowserRouter>
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
@@ -160,6 +163,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </CompanySettingsProvider>
   );
 }
 

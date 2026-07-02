@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2, Calendar, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { signIn } = useAuth();
+  const { settings } = useCompanySettings();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -54,18 +56,18 @@ export default function LoginPage() {
         <div className="relative max-w-lg text-center lg:text-left space-y-8 animate-float">
           <div className="inline-flex p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
             <img
-              src="/logo-gico.png"
-              alt="GICO SARL"
+              src={settings.logo_url || "/logo-gico.png"}
+              alt={settings.company_name}
               className="h-16 w-16 object-contain rounded-xl bg-white p-1"
             />
           </div>
           
           <div className="space-y-4">
             <h2 className="text-4xl font-extrabold text-white tracking-tight leading-tight">
-              Suivi Intelligent des <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-indigo-400">Visites GICO</span>
+              Suivi Intelligent des <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-indigo-400">Visites {settings.company_name}</span>
             </h2>
             <p className="text-slate-400 text-base leading-relaxed">
-              Une plateforme moderne de gestion, facturation et archivage des visites au sein de GICO SARL. Optimisez l'accueil et accélérez le traitement des dossiers de vos visiteurs.
+              Une plateforme moderne de gestion, facturation et archivage des visites au sein de {settings.company_name}. Optimisez l'accueil et accélérez le traitement des dossiers de vos visiteurs.
             </p>
           </div>
 
@@ -98,13 +100,13 @@ export default function LoginPage() {
           <div className="lg:hidden text-center space-y-4">
             <div className="inline-flex p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg">
               <img
-                src="/logo-gico.png"
-                alt="GICO SARL"
+                src={settings.logo_url || "/logo-gico.png"}
+                alt={settings.company_name}
                 className="h-14 w-14 object-contain rounded-lg"
               />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">GICO VISIT TRACKER</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{settings.company_name} VISIT TRACKER</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Système de suivi des visites</p>
             </div>
           </div>
@@ -134,7 +136,7 @@ export default function LoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="input pl-11"
-                      placeholder="votre.email@gicosarl.com"
+                      placeholder="votre.email@entreprise.com"
                       required
                       autoComplete="email"
                     />
@@ -182,7 +184,7 @@ export default function LoginPage() {
               </form>
 
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 text-center space-y-3">
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">Accès réservé au personnel autorisé de GICO SARL</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Accès réservé au personnel autorisé de {settings.company_name}</p>
                 <Link
                   to="/setup"
                   className="inline-block text-xs font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 transition-colors hover:underline"

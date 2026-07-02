@@ -1,6 +1,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import {
   LayoutDashboard,
   Users,
@@ -46,6 +47,7 @@ const navItems = [
 
 export default function Layout() {
   const { user, profile, signOut } = useAuth();
+  const { settings } = useCompanySettings();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -154,13 +156,13 @@ export default function Layout() {
           <div className={`p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
             <div className="flex items-center gap-3">
               <img
-                src="/logo-gico.png"
-                alt="GICO SARL"
+                src={settings.logo_url || "/logo-gico.png"}
+                alt={settings.company_name}
                 className="w-10 h-10 object-contain rounded-xl bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 p-0.5 shadow-sm"
               />
               {!collapsed && (
                 <div>
-                  <h1 className="font-bold text-slate-800 dark:text-white leading-tight">GICO SARL</h1>
+                  <h1 className="font-bold text-slate-800 dark:text-white leading-tight truncate max-w-[140px]">{settings.company_name}</h1>
                   <p className="text-[10px] uppercase tracking-wider font-semibold text-primary-600 dark:text-primary-400">Visit Tracker</p>
                 </div>
               )}
@@ -271,11 +273,11 @@ export default function Layout() {
         <div className="flex items-center justify-between p-4.5 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
             <img
-              src="/logo-gico.png"
-              alt="GICO SARL"
+              src={settings.logo_url || "/logo-gico.png"}
+              alt={settings.company_name}
               className="w-8 h-8 object-contain rounded-lg bg-white p-0.5 border border-slate-200 dark:border-slate-800 shadow-sm"
             />
-            <span className="font-bold text-slate-800 dark:text-white">GICO SARL</span>
+            <span className="font-bold text-slate-800 dark:text-white truncate max-w-[140px]">{settings.company_name}</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}

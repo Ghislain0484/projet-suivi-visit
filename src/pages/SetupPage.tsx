@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import { Eye, EyeOff, Lock, Mail, User, Phone, CheckCircle, AlertCircle, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function SetupPage() {
   const navigate = useNavigate();
+  const { settings } = useCompanySettings();
   const [checking, setChecking] = useState(true);
   const [alreadySetup, setAlreadySetup] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -107,8 +109,8 @@ export default function SetupPage() {
         <div className="relative max-w-md space-y-6">
           <div className="inline-flex p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
             <img
-              src="/logo-gico.png"
-              alt="GICO SARL"
+              src={settings.logo_url || "/logo-gico.png"}
+              alt={settings.company_name}
               className="h-12 w-12 object-contain rounded-xl bg-white p-1"
             />
           </div>
@@ -132,11 +134,11 @@ export default function SetupPage() {
           {/* Logo on mobile only */}
           <div className="lg:hidden text-center space-y-3">
             <img
-              src="/logo-gico.png"
-              alt="GICO SARL"
+              src={settings.logo_url || "/logo-gico.png"}
+              alt={settings.company_name}
               className="h-14 w-14 object-contain rounded-xl bg-white p-1 shadow-md mx-auto"
             />
-            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">GICO VISIT TRACKER</h1>
+            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">{settings.company_name} VISIT TRACKER</h1>
           </div>
 
           <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-lg rounded-3xl border border-slate-100 dark:border-slate-800/80 p-8 shadow-2xl">

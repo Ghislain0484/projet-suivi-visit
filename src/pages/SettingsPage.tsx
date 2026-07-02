@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import {
   Mail,
   Phone,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 
 export default function SettingsPage() {
+  const { settings: dbSettings, updateSettings } = useCompanySettings();
   const [activeTab, setActiveTab] = useState<'general' | 'automations' | 'recipients' | 'logs'>('general');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,14 +40,37 @@ export default function SettingsPage() {
   // General Settings State
   const [companySettings, setCompanySettings] = useState({
     company_name: 'GICO SARL',
+    slogan: 'Gestion & Intégration de Services Collaboratifs',
+    rccm: 'BF-OUA-2026-B-1234',
+    ifu: '00123456X',
     company_address: '',
     company_phone: '',
     company_email: '',
     company_website: '',
+    logo_url: '',
     visit_prefix: 'VST',
     invoice_prefix: 'INV',
     default_duration_days: '7',
   });
+
+  useEffect(() => {
+    if (dbSettings) {
+      setCompanySettings({
+        company_name: dbSettings.company_name || 'GICO SARL',
+        slogan: dbSettings.slogan || '',
+        rccm: dbSettings.rccm || '',
+        ifu: dbSettings.ifu || '',
+        company_address: dbSettings.company_address || '',
+        company_phone: dbSettings.phone || '',
+        company_email: dbSettings.email || '',
+        company_website: dbSettings.website || '',
+        logo_url: dbSettings.logo_url || '',
+        visit_prefix: dbSettings.visit_prefix || 'VT',
+        invoice_prefix: dbSettings.invoice_prefix || 'FAC',
+        default_duration_days: '7',
+      });
+    }
+  }, [dbSettings]);
 
   // Automations States
   const [automations, setAutomations] = useState<any[]>([]);
@@ -134,12 +159,28 @@ export default function SettingsPage() {
     setSaving(true);
     setError('');
     setSaved(false);
-    // In a real database schema we could persist this to a system_settings table.
-    // For this interface, we simulate writing and display success.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    setSaved(true);
+    
+    const { error: err } = await updateSettings({
+      company_name: companySettings.company_name,
+      slogan: companySettings.slogan,
+      rccm: companySettings.rccm,
+      ifu: companySettings.ifu,
+      company_address: companySettings.company_address,
+      phone: companySettings.company_phone,
+      email: companySettings.company_email,
+      website: companySettings.company_website,
+      logo_url: companySettings.logo_url || null,
+      visit_prefix: companySettings.visit_prefix,
+      invoice_prefix: companySettings.invoice_prefix,
+    });
+
+    if (err) {
+      setError(err.message || "Impossible d'enregistrer les paramètres");
+    } else {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    }
     setSaving(false);
-    setTimeout(() => setSaved(false), 3000);
   };
 
   // AUTOMATIONS CRUD
@@ -468,6 +509,13 @@ export default function SettingsPage() {
                   </h2>
                 </div>
                 <form onSubmit={handleSaveGeneral} className="card-body space-y-4 text-xs">
+                  {error && (
+                    <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/50 rounded-2xl flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+                      <p className="text-xs text-rose-700 dark:text-rose-400 font-bold">{error}</p>
+                    </div>
+                  )}
+
                   {saved && (
                     <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 rounded-2xl flex items-start gap-3">
                       <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
@@ -531,6 +579,46 @@ export default function SettingsPage() {
                       onChange={(e) => setCompanySettings(p => ({ ...p, company_address: e.target.value }))}
                       className="input"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Slogan / Description</label>
+                      <input
+                        type="text"
+                        value={companySettings.slogan}
+                        onChange={(e) => setCompanySettings(p => ({ ...p, slogan: e.target.value }))}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">URL du Logo</label>
+                      <input
+                        type="text"
+                        value={companySettings.logo_url}
+                        onChange={(e) => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))}
+                        className="input"
+                        placeholder="Ex: https://votresite.com/logo.png"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Numéro RCCM</label>
+                      <input
+                        type="text"
+                        value={companySettings.rccm}
+                        onChange={(e) => setCompanySettings(p => ({ ...p, rccm: e.target.value }))}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Identifiant Unique IFU</label>
+                      <input
+                        type="text"
+                        value={companySettings.ifu}
+                        onChange={(e) => setCompanySettings(p => ({ ...p, ifu: e.target.value }))}
+                        className="input"
+                      />
+                    </div>
                   </div>
 
                   {/* System settings */}

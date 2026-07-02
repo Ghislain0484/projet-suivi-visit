@@ -784,8 +784,8 @@ export default function VisitDetailPage() {
   };
 
   const canEdit = profile?.role === 'admin' || profile?.role === 'reception' || profile?.role === 'director';
-  const canManageInvoice = profile && ['admin', 'director', 'accounting', 'service_manager'].includes(profile.role);
-  const canManageFollowUp = profile?.role === 'admin' || profile?.role === 'service_manager' || profile?.role === 'director';
+  const canManageInvoice = profile && ['admin', 'director', 'accounting', 'reception', 'service_manager'].includes(profile.role);
+  const canManageFollowUp = profile && ['admin', 'director', 'reception', 'service_manager'].includes(profile.role);
   const canTreat = profile && ['admin', 'director', 'service_manager', 'collaborator', 'nurse'].includes(profile.role);
 
   if (loading) {

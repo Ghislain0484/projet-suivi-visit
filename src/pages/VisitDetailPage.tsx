@@ -67,6 +67,8 @@ export default function VisitDetailPage() {
     responsible_service_id: '',
   });
 
+  const [savingInvoice, setSavingInvoice] = useState(false);
+
   const [followUpForm, setFollowUpForm] = useState({
     status: 'pending',
     priority: 'normal',
@@ -357,101 +359,104 @@ export default function VisitDetailPage() {
 
   const handleAddInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!visit) return;
+    if (!visit || savingInvoice) return;
+    setSavingInvoice(true);
 
-    // Calculate total amount from selected items if billable
-    const totalAmount = invoiceForm.is_billable
-      ? selectedItems.reduce((sum, current) => sum + current.item.price * current.quantity, 0)
-      : 0;
+    try {
+      // Calculate total amount from selected items if billable
+      const totalAmount = invoiceForm.is_billable
+        ? selectedItems.reduce((sum, current) => sum + current.item.price * current.quantity, 0)
+        : 0;
 
-    let invoiceId = invoice?.id;
+      let invoiceId = invoice?.id;
 
-    const invoiceData = {
-      visit_id: visit.id,
-      is_billable: invoiceForm.is_billable,
-      amount: totalAmount,
-      expected_duration_days: invoiceForm.expected_duration_days,
-      responsible_service_id: invoiceForm.responsible_service_id || null,
-      deadline: invoiceForm.responsible_service_id
-        ? new Date(Date.now() + invoiceForm.expected_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-        : null,
-    };
+      const invoiceData = {
+        visit_id: visit.id,
+        is_billable: invoiceForm.is_billable,
+        amount: totalAmount,
+        expected_duration_days: invoiceForm.expected_duration_days,
+        responsible_service_id: invoiceForm.responsible_service_id || null,
+        deadline: invoiceForm.responsible_service_id
+          ? new Date(Date.now() + invoiceForm.expected_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          : null,
+      };
 
-    if (invoiceId) {
-      // Update existing invoice
-      const { error: updateError } = await supabase
-        .from('invoices')
-        .update({
-          ...invoiceData,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', invoiceId);
-      
-      if (updateError) {
-        console.error(updateError);
-        return;
+      if (invoiceId) {
+        // Update existing invoice
+        const { error: updateError } = await supabase
+          .from('invoices')
+          .update({
+            ...invoiceData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', invoiceId);
+        
+        if (updateError) throw updateError;
+        
+        // Delete old invoice items
+        await supabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
+      } else {
+        // Insert new invoice
+        const { data: newInv, error: insertError } = await supabase
+          .from('invoices')
+          .insert({
+            ...invoiceData,
+            amount_paid: 0,
+            payment_status: 'not_invoiced',
+            service_status: 'pending',
+          })
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        invoiceId = newInv.id;
       }
-      
-      // Delete old invoice items
-      await supabase.from('invoice_items').delete().eq('invoice_id', invoiceId);
-    } else {
-      // Insert new invoice
-      const { data: newInv, error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          ...invoiceData,
-          amount_paid: 0,
-          payment_status: 'not_invoiced',
-          service_status: 'pending',
-        })
-        .select()
-        .single();
-      
-      if (insertError) {
-        console.error(insertError);
-        return;
-      }
-      invoiceId = newInv.id;
-    }
 
-    // Insert invoice items if billable
-    if (invoiceForm.is_billable && selectedItems.length > 0) {
-      const itemsToInsert = selectedItems.map((si) => {
-        if ((si.item as any).is_custom) {
-          return {
-            invoice_id: invoiceId,
-            service_item_id: null,
-            custom_name: si.item.name,
-            quantity: si.quantity,
-            unit_price: si.item.price,
-            total_price: si.item.price * si.quantity,
-          };
-        } else {
-          return {
-            invoice_id: invoiceId,
-            service_item_id: si.item.id,
-            custom_name: null,
-            quantity: si.quantity,
-            unit_price: si.item.price,
-            total_price: si.item.price * si.quantity,
-          };
-        }
+      // Insert invoice items if billable
+      if (invoiceForm.is_billable && selectedItems.length > 0) {
+        const itemsToInsert = selectedItems.map((si) => {
+          if ((si.item as any).is_custom) {
+            return {
+              invoice_id: invoiceId,
+              service_item_id: null,
+              custom_name: si.item.name,
+              quantity: si.quantity,
+              unit_price: si.item.price,
+              total_price: si.item.price * si.quantity,
+            };
+          } else {
+            return {
+              invoice_id: invoiceId,
+              service_item_id: si.item.id,
+              custom_name: null,
+              quantity: si.quantity,
+              unit_price: si.item.price,
+              total_price: si.item.price * si.quantity,
+            };
+          }
+        });
+
+        const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
+        if (itemsError) throw itemsError;
+      }
+
+      // Log activity
+      await supabase.from('activity_logs').insert({
+        user_id: user?.id,
+        action: invoice ? 'UPDATE_INVOICE' : 'CREATE_INVOICE',
+        entity_type: 'invoice',
+        entity_id: invoiceId,
+        details: { amount: totalAmount },
       });
 
-      await supabase.from('invoice_items').insert(itemsToInsert);
+      setShowInvoiceForm(false);
+      fetchVisit();
+    } catch (err: any) {
+      console.error("Error saving invoice:", err);
+      alert("Une erreur est survenue lors de l'enregistrement de la facture: " + (err.message || err));
+    } finally {
+      setSavingInvoice(false);
     }
-
-    // Log activity
-    await supabase.from('activity_logs').insert({
-      user_id: user?.id,
-      action: invoice ? 'UPDATE_INVOICE' : 'CREATE_INVOICE',
-      entity_type: 'invoice',
-      entity_id: invoiceId,
-      details: { amount: totalAmount },
-    });
-
-    setShowInvoiceForm(false);
-    fetchVisit();
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
@@ -1785,11 +1790,27 @@ export default function VisitDetailPage() {
               )}
 
               <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-                <button type="button" onClick={() => setShowInvoiceForm(false)} className="btn-secondary px-5 py-2.5">
+                <button 
+                  type="button" 
+                  onClick={() => setShowInvoiceForm(false)} 
+                  className="btn-secondary px-5 py-2.5"
+                  disabled={savingInvoice}
+                >
                   Annuler
                 </button>
-                <button type="submit" className="btn-primary px-6 py-2.5">
-                  Enregistrer
+                <button 
+                  type="submit" 
+                  className="btn-primary px-6 py-2.5 flex items-center gap-2"
+                  disabled={savingInvoice}
+                >
+                  {savingInvoice ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    'Enregistrer'
+                  )}
                 </button>
               </div>
 

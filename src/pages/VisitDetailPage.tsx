@@ -1291,11 +1291,18 @@ export default function VisitDetailPage() {
           <div className="card">
             <div className="card-header">
               <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Facturation & Prestation</h2>
-              {!invoice && canManageInvoice && (
-                <button onClick={() => setShowInvoiceForm(true)} className="text-xs font-bold text-primary-600 dark:text-primary-400 flex items-center gap-1 hover:underline">
-                  <Plus className="w-4 h-4" /> Configurer facturation
-                </button>
-              )}
+              <div className="flex gap-3">
+                {!invoice && canManageInvoice && (
+                  <button onClick={() => setShowInvoiceForm(true)} className="text-xs font-bold text-primary-600 dark:text-primary-400 flex items-center gap-1 hover:underline">
+                    <Plus className="w-4 h-4" /> Configurer facturation
+                  </button>
+                )}
+                {invoice && canManageInvoice && (
+                  <button onClick={() => setShowInvoiceForm(true)} className="text-xs font-bold text-primary-600 dark:text-primary-400 flex items-center gap-1 hover:underline">
+                    <Edit className="w-4.5 h-4.5" /> Modifier facturation
+                  </button>
+                )}
+              </div>
             </div>
             <div className="card-body">
               {invoice ? (
@@ -1603,7 +1610,8 @@ export default function VisitDetailPage() {
               <button onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
             </div>
             
-            <form onSubmit={handleAddInvoice} className="p-6 space-y-5">
+            <form onSubmit={handleAddInvoice} className="flex flex-col max-h-[calc(90vh-70px)]">
+              <div className="p-6 space-y-5 overflow-y-auto flex-1">
               
               <div>
                 <label className="label">Assujetti aux frais</label>
@@ -1789,7 +1797,9 @@ export default function VisitDetailPage() {
                 </>
               )}
 
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+              </div>
+
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800/80 flex justify-end gap-2.5 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-3xl">
                 <button 
                   type="button" 
                   onClick={() => setShowInvoiceForm(false)} 
@@ -1813,7 +1823,6 @@ export default function VisitDetailPage() {
                   )}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
@@ -1893,7 +1902,8 @@ export default function VisitDetailPage() {
               <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
             </div>
             
-            <form onSubmit={handleRecordPayment} className="p-6 space-y-5">
+            <form onSubmit={handleRecordPayment} className="flex flex-col max-h-[calc(90vh-70px)]">
+              <div className="p-6 space-y-5 overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-950/20 rounded-2xl border border-slate-100 dark:border-slate-800/80 text-xs font-bold">
                 <div>
                   <p className="text-slate-400 uppercase">Montant global :</p>
@@ -1919,7 +1929,9 @@ export default function VisitDetailPage() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+              </div>
+
+              <div className="p-6 border-t border-slate-100 dark:border-slate-800/80 flex justify-end gap-2.5 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-3xl">
                 <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-secondary px-5 py-2.5">
                   Annuler
                 </button>

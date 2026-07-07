@@ -90,26 +90,31 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData();
 
+    let debounceTimer: NodeJS.Timeout;
+    const triggerDebouncedFetch = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchDashboardData();
+      }, 3000);
+    };
+
     // Subscribe to realtime visits and appointments
     const dashboardChannel = supabase
       .channel('dashboard-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'visits' },
-        () => {
-          fetchDashboardData();
-        }
+        triggerDebouncedFetch
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'appointments' },
-        () => {
-          fetchDashboardData();
-        }
+        triggerDebouncedFetch
       )
       .subscribe();
 
     return () => {
+      clearTimeout(debounceTimer);
       supabase.removeChannel(dashboardChannel);
     };
   }, [profile]);

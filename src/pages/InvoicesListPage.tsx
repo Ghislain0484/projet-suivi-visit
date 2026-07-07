@@ -25,6 +25,9 @@ export default function InvoicesListPage() {
   const { user, profile } = useAuth();
   const { settings } = useCompanySettings();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const perPage = 15;
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,8 +80,15 @@ export default function InvoicesListPage() {
 
   useEffect(() => {
     fetchServices();
-    fetchInvoices();
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
   }, [filters, searchQuery]);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [filters, searchQuery, page]);
 
   const fetchServices = async () => {
     const { data } = await supabase.from('services').select('*').eq('is_active', true);
@@ -87,56 +97,112 @@ export default function InvoicesListPage() {
 
   const fetchInvoices = async () => {
     setLoading(true);
-    let query = supabase
-      .from('invoices')
-      .select(
-        `
-        *,
-        visit:visits(
+    try {
+      // 1. Fetch lightweight invoices to calculate overall stats (Fast query: no joins)
+      let statsQuery = supabase
+        .from('invoices')
+        .select('amount, amount_paid, is_billable, payment_status, service_status');
+
+      // Apply same filters (except search) for stats
+      if (filters.payment_status === 'unresolved') {
+        statsQuery = statsQuery.in('payment_status', ['invoiced', 'partially_paid']);
+      } else if (filters.payment_status) {
+        statsQuery = statsQuery.eq('payment_status', filters.payment_status);
+      }
+      if (filters.service_status) statsQuery = statsQuery.eq('service_status', filters.service_status);
+      if (filters.service_id) statsQuery = statsQuery.eq('responsible_service_id', filters.service_id);
+      if (filters.is_billable) statsQuery = statsQuery.eq('is_billable', filters.is_billable === 'yes');
+
+      const { data: statsData } = await statsQuery;
+      if (statsData) {
+        const totalInvoiced = statsData
+          .filter((inv) => inv.is_billable)
+          .reduce((sum, inv) => sum + Number(inv.amount), 0);
+        const totalPaid = statsData
+          .filter((inv) => inv.is_billable)
+          .reduce((sum, inv) => sum + Number(inv.amount_paid || 0), 0);
+        const totalRemaining = totalInvoiced - totalPaid;
+        const pendingCount = statsData.filter((inv) => inv.service_status === 'pending').length;
+        const lateCount = statsData.filter((inv) => ['late', 'blocked'].includes(inv.service_status)).length;
+
+        setStats({ totalInvoiced, totalPaid, totalRemaining, pendingCount, lateCount });
+      }
+
+      // 2. Multi-stage search: Resolve matching visits if searchQuery is active
+      let matchingVisitIds: string[] = [];
+      if (searchQuery) {
+        const escapedQuery = searchQuery.replace(/['()[\],.]/g, "%");
+        const { data: visitorsData } = await supabase
+          .from('visitors')
+          .select('id')
+          .or(`first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%`);
+        
+        const visitorIds = visitorsData?.map(v => v.id) || [];
+
+        let visitSearch = supabase.from('visits').select('id');
+        if (visitorIds.length > 0) {
+          visitSearch = visitSearch.or(`visit_code.ilike.%${escapedQuery}%,purpose.ilike.%${escapedQuery}%,visitor_id.in.(${visitorIds.map(id => `"${id}"`).join(',')})`);
+        } else {
+          visitSearch = visitSearch.or(`visit_code.ilike.%${escapedQuery}%,purpose.ilike.%${escapedQuery}%`);
+        }
+
+        const { data: visitsData } = await visitSearch;
+        matchingVisitIds = visitsData?.map(v => v.id) || [];
+
+        if (matchingVisitIds.length === 0) {
+          setInvoices([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 3. Paginated list query
+      let listQuery = supabase
+        .from('invoices')
+        .select(
+          `
           *,
-          visitor:visitors(*)
-        ),
-        responsible_service:services!invoices_responsible_service_id_fkey(name)
-      `
-      )
-      .order('created_at', { ascending: false });
+          visit:visits(
+            *,
+            visitor:visitors(*)
+          ),
+          responsible_service:services!invoices_responsible_service_id_fkey(name)
+        `,
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false });
 
-    // Apply filters
-    if (filters.payment_status === 'unresolved') {
-      query = query.in('payment_status', ['invoiced', 'partially_paid']);
-    } else if (filters.payment_status) {
-      query = query.eq('payment_status', filters.payment_status);
+      // Apply filters
+      if (filters.payment_status === 'unresolved') {
+        listQuery = listQuery.in('payment_status', ['invoiced', 'partially_paid']);
+      } else if (filters.payment_status) {
+        listQuery = listQuery.eq('payment_status', filters.payment_status);
+      }
+      if (filters.service_status) listQuery = listQuery.eq('service_status', filters.service_status);
+      if (filters.service_id) listQuery = listQuery.eq('responsible_service_id', filters.service_id);
+      if (filters.is_billable) listQuery = listQuery.eq('is_billable', filters.is_billable === 'yes');
+
+      // Apply matching visit IDs from search
+      if (searchQuery) {
+        listQuery = listQuery.in('visit_id', matchingVisitIds);
+      }
+
+      // Apply pagination range
+      listQuery = listQuery.range((page - 1) * perPage, page * perPage - 1);
+
+      const { data: listData, error: listError, count } = await listQuery;
+      if (!listError && listData) {
+        setInvoices(listData);
+        setTotalCount(count || 0);
+      } else if (listError) {
+        console.error("Error fetching paginated invoices:", listError);
+      }
+    } catch (err) {
+      console.error("Error in fetchInvoices:", err);
+    } finally {
+      setLoading(false);
     }
-    if (filters.service_status) query = query.eq('service_status', filters.service_status);
-    if (filters.service_id) query = query.eq('responsible_service_id', filters.service_id);
-    if (filters.is_billable) query = query.eq('is_billable', filters.is_billable === 'yes');
-
-    const { data, error } = await query;
-    if (!error && data) {
-      // Filter by search query
-      const filtered = searchQuery
-        ? data.filter((inv: any) =>
-            inv.visit?.visit_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            inv.visit?.visitor?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            inv.visit?.visitor?.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
-          )
-        : data;
-      setInvoices(filtered);
-
-      // Calculate stats
-      const totalInvoiced = data
-        .filter((inv) => inv.is_billable)
-        .reduce((sum, inv) => sum + Number(inv.amount), 0);
-      const totalPaid = data
-        .filter((inv) => inv.is_billable)
-        .reduce((sum, inv) => sum + Number(inv.amount_paid || 0), 0);
-      const totalRemaining = totalInvoiced - totalPaid;
-      const pendingCount = data.filter((inv) => inv.service_status === 'pending').length;
-      const lateCount = data.filter((inv) => ['late', 'blocked'].includes(inv.service_status)).length;
-
-      setStats({ totalInvoiced, totalPaid, totalRemaining, pendingCount, lateCount });
-    }
-    setLoading(false);
   };
 
   const exportToCSV = () => {
@@ -581,6 +647,32 @@ export default function InvoicesListPage() {
               </tbody>
             </table>
           </div>
+          {/* Pagination Controls */}
+          {totalCount > perPage && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900/50 rounded-b-2xl">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Affichage de <span className="font-bold text-slate-800 dark:text-white">{(page - 1) * perPage + 1}</span> à{' '}
+                <span className="font-bold text-slate-800 dark:text-white">{Math.min(page * perPage, totalCount)}</span> sur{' '}
+                <span className="font-bold text-slate-800 dark:text-white">{totalCount}</span> factures
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                >
+                  Précédent
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / perPage), p + 1))}
+                  disabled={page >= Math.ceil(totalCount / perPage)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                >
+                  Suivant
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

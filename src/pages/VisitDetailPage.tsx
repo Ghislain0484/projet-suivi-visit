@@ -1390,7 +1390,7 @@ export default function VisitDetailPage() {
                     </div>
                   )}
 
-                  {invoice.is_billable && invoice.payment_status !== 'paid' && (profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'cashier' || profile?.role === 'director') && (
+                  {invoice.is_billable && invoice.payment_status !== 'paid' && (profile?.role === 'admin' || profile?.role === 'accounting' || profile?.role === 'cashier' || profile?.role === 'director' || profile?.role === 'reception') && (
                     <button
                       onClick={() => {
                         setPaymentAmount(Math.max(0, Number(invoice.amount) - Number(invoice.amount_paid)));

@@ -36,13 +36,13 @@ const navItems = [
   { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse', 'lawyer'] },
   { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
   { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator'] },
-  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director', 'service_manager'] },
+  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director', 'service_manager', 'reception'] },
   { path: '/infirmerie', label: 'Infirmerie', icon: HeartPulse, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
-  { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager'] },
-  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier', 'service_manager'] },
-  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director', 'service_manager'] },
+  { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager', 'reception'] },
+  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception'] },
+  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director', 'service_manager', 'reception'] },
   { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin', 'director'] },
-  { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin', 'director'] },
+  { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin', 'director', 'reception'] },
 ];
 
 export default function Layout() {

@@ -89,7 +89,7 @@ function App() {
             <Route
               path="services"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
                   <ServicesListPage />
                 </AuthGuard>
               }
@@ -99,7 +99,7 @@ function App() {
             <Route
               path="invoices"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier', 'service_manager']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception']}>
                   <InvoicesListPage />
                 </AuthGuard>
               }
@@ -109,7 +109,7 @@ function App() {
             <Route
               path="reports"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
                   <ReportsPage />
                 </AuthGuard>
               }
@@ -129,7 +129,7 @@ function App() {
             <Route
               path="settings"
               element={
-                <AuthGuard requiredRoles={['admin', 'director']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'reception']}>
                   <SettingsPage />
                 </AuthGuard>
               }
@@ -148,7 +148,7 @@ function App() {
             <Route
               path="permissions"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
                   <PermissionsPage />
                 </AuthGuard>
               }

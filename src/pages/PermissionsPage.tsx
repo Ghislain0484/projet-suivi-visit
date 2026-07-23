@@ -33,7 +33,7 @@ export default function PermissionsPage() {
       .from('permissions')
       .select(`
         *,
-        profile:profiles(*)
+        profile:profiles!user_id(*)
       `)
       .order('created_at', { ascending: false });
 

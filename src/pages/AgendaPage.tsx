@@ -131,8 +131,8 @@ export default function AgendaPage() {
       // 4. Fetch permissions (absences and leaves)
       let permQuery = supabase.from('permissions').select(`
         *,
-        profile:profiles(*)
-      `);
+        profile:profiles!user_id(*)
+      `).eq('status', 'approved');
       if (profile && profile.role === 'collaborator') {
         permQuery = permQuery.eq('user_id', profile.id);
       }

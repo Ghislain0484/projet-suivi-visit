@@ -12,6 +12,7 @@ CREATE POLICY "service_items_insert" ON public.service_items FOR INSERT TO authe
 DROP POLICY IF EXISTS "service_items_update" ON public.service_items;
 CREATE POLICY "service_items_update" ON public.service_items FOR UPDATE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
+-- Allow reception role in service_items RLS (delete)
 DROP POLICY IF EXISTS "service_items_delete" ON public.service_items;
 CREATE POLICY "service_items_delete" ON public.service_items FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
@@ -33,18 +34,18 @@ DROP POLICY IF EXISTS "visit_access_delete" ON public.visit_access;
 CREATE POLICY "visit_access_delete" ON public.visit_access FOR DELETE TO authenticated USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
 -- Allow reception role in notification automation configurations RLS
-DROP POLICY IF EXISTS "templates_all" ON public.notification_templates;
-CREATE POLICY "templates_all" ON public.notification_templates FOR ALL TO authenticated 
+DROP POLICY IF EXISTS "automation_settings_all" ON public.automation_settings;
+CREATE POLICY "automation_settings_all" ON public.automation_settings FOR ALL TO authenticated 
   USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'))
   WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
-DROP POLICY IF EXISTS "recipients_all" ON public.notification_recipients;
-CREATE POLICY "recipients_all" ON public.notification_recipients FOR ALL TO authenticated 
+DROP POLICY IF EXISTS "notification_recipients_all" ON public.notification_recipients;
+CREATE POLICY "notification_recipients_all" ON public.notification_recipients FOR ALL TO authenticated 
   USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'))
   WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
-DROP POLICY IF EXISTS "notif_logs_all" ON public.notification_logs;
-CREATE POLICY "notif_logs_all" ON public.notification_logs FOR ALL TO authenticated 
+DROP POLICY IF EXISTS "notification_logs_all" ON public.notification_logs;
+CREATE POLICY "notification_logs_all" ON public.notification_logs FOR ALL TO authenticated 
   USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'))
   WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 

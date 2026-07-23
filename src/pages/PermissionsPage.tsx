@@ -12,12 +12,14 @@ import {
   User,
   Check,
   X,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function PermissionsPage() {
   const { user, profile } = useAuth();
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,7 +28,8 @@ export default function PermissionsPage() {
 
   const fetchPermissions = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    setError(null);
+    const { data, error: fetchErr } = await supabase
       .from('permissions')
       .select(`
         *,
@@ -34,7 +37,10 @@ export default function PermissionsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
+    if (fetchErr) {
+      console.error("Error fetching permissions:", fetchErr);
+      setError(fetchErr.message);
+    } else if (data) {
       setPermissions(data as any);
     }
     setLoading(false);
@@ -98,6 +104,16 @@ export default function PermissionsPage() {
           Valider ou refuser les demandes d'absences exceptionnelles et congés des employés
         </p>
       </div>
+
+      {error && (
+        <div className="p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-500/10 rounded-2xl flex items-start gap-3 text-xs text-rose-600 dark:text-rose-400">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Erreur de chargement des permissions :</p>
+            <p className="mt-1 font-medium">{error}</p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-64">

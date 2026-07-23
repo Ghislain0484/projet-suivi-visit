@@ -49,5 +49,16 @@ CREATE POLICY "notification_logs_all" ON public.notification_logs FOR ALL TO aut
   USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'))
   WITH CHECK (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception'));
 
+-- Allow reception role in permissions RLS (select & update)
+DROP POLICY IF EXISTS "permissions_select" ON public.permissions;
+CREATE POLICY "permissions_select" ON public.permissions 
+  FOR SELECT TO authenticated 
+  USING (auth.uid() = user_id OR public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception', 'service_manager'));
+
+DROP POLICY IF EXISTS "permissions_update" ON public.permissions;
+CREATE POLICY "permissions_update" ON public.permissions 
+  FOR UPDATE TO authenticated 
+  USING (public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception', 'service_manager'));
+
 -- Reload Postgrest schema
 NOTIFY pgrst, 'reload schema';

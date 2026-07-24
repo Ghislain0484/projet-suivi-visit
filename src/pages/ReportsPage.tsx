@@ -300,8 +300,12 @@ export default function ReportsPage() {
 
       // Gains calculation: Does the associated visit have a billable invoice > 0?
       const actionsWithGains = periodFollowUps.filter((f) => {
-        const invList = f.visit?.invoices || [];
-        return invList.some((inv: any) => inv.is_billable && Number(inv.amount) > 0);
+        const rawInvoice = f.visit?.invoices;
+        if (!rawInvoice) return false;
+        if (Array.isArray(rawInvoice)) {
+          return rawInvoice.some((inv: any) => inv.is_billable && Number(inv.amount) > 0);
+        }
+        return rawInvoice.is_billable && Number(rawInvoice.amount) > 0;
       }).length;
       const actionsWithoutGains = totalActions - actionsWithGains;
 

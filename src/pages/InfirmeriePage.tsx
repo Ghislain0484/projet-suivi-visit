@@ -193,7 +193,7 @@ export default function InfirmeriePage() {
         const { data: files } = await supabase.from('medical_files').select('*, profile:profiles(*)');
         if (files) setMedicalFiles(files as any);
 
-        const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
+        const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles!user_id(*)').order('created_at', { ascending: false });
         if (reqs) setConsultations(reqs as any);
 
         const { data: prod } = await supabase.from('pharmacy_products').select('*').order('name');
@@ -208,7 +208,7 @@ export default function InfirmeriePage() {
         const { data: exm } = await supabase.from('medical_exams').select('*, profile:profiles(*)').order('date', { ascending: false });
         if (exm) setExams(exm as any);
 
-        const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
+        const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles!employee_id(*)').order('created_at', { ascending: false });
         if (rst) setRests(rst as any);
       } else {
         // Fetch pharmacy products if active tab is pharmacy
@@ -219,14 +219,14 @@ export default function InfirmeriePage() {
 
         if (isRHOrDirector) {
           // Fetch only restricted HR medical rests data
-          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').order('created_at', { ascending: false });
+          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles!employee_id(*)').order('created_at', { ascending: false });
           if (rst) setRests(rst as any);
         } else if (user) {
           // Collaborator restricted view
           const { data: myFile } = await supabase.from('medical_files').select('*, profile:profiles(*)').eq('user_id', user.id).maybeSingle();
           if (myFile) setSelectedFile(myFile as any);
 
-          const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles(*)').eq('user_id', user.id).order('created_at', { ascending: false });
+          const { data: reqs } = await supabase.from('medical_requests').select('*, profile:profiles!user_id(*)').eq('user_id', user.id).order('created_at', { ascending: false });
           if (reqs) setConsultations(reqs as any);
 
           const { data: appt } = await supabase.from('medical_appointments').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
@@ -235,7 +235,7 @@ export default function InfirmeriePage() {
           const { data: exm } = await supabase.from('medical_exams').select('*, profile:profiles(*)').eq('user_id', user.id).order('date', { ascending: false });
           if (exm) setExams(exm as any);
 
-          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles(*)').eq('employee_id', user.id).order('created_at', { ascending: false });
+          const { data: rst } = await supabase.from('medical_rests').select('*, profile:profiles!employee_id(*)').eq('employee_id', user.id).order('created_at', { ascending: false });
           if (rst) setRests(rst as any);
         }
       }

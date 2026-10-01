@@ -3,6 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase, Service, Visitor, VisitorType, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  searchVisitorsServer,
+  matchVisitorLocally,
+  findMatchingVisitor,
+  normalizePhone,
+} from '../lib/visitorUtils';
+import {
   Save,
   X,
   User,
@@ -14,6 +20,8 @@ import {
   Loader2,
   Search,
   Sparkles,
+  CheckCircle2,
+  UserCheck,
 } from 'lucide-react';
 
 export default function VisitFormPage() {
@@ -30,13 +38,10 @@ export default function VisitFormPage() {
   const [showVisitorSearch, setShowVisitorSearch] = useState(false);
   const [visitorSearch, setVisitorSearch] = useState('');
   const [searchingServer, setSearchingServer] = useState(false);
-  const [suggestedVisitor, setSuggestedVisitor] = useState<Visitor | null>(null);
+  const [suggestedVisitors, setSuggestedVisitors] = useState<Visitor[]>([]);
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-
-  // Helper for normalizing phone numbers to digits only
-  const normalizePhone = (phone: string | null | undefined) => (phone || '').replace(/\D/g, '');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -90,81 +95,82 @@ export default function VisitFormPage() {
 
     const timer = setTimeout(async () => {
       setSearchingServer(true);
-      const term = visitorSearch.trim();
-      const escaped = term.replace(/[%_]/g, '\\$&');
-      const digits = term.replace(/\D/g, '');
-
-      let query = supabase.from('visitors').select('*');
-      if (digits.length >= 3) {
-        query = query.or(
-          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,company.ilike.%${escaped}%,phone.ilike.%${digits}%,email.ilike.%${escaped}%`
-        );
-      } else {
-        query = query.or(
-          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,company.ilike.%${escaped}%,email.ilike.%${escaped}%`
-        );
-      }
-
-      const { data } = await query.order('last_name').limit(50);
-      if (data) {
-        setExistingVisitors((prev) => {
-          const map = new Map<string, Visitor>();
-          data.forEach((v) => map.set(v.id, v));
-          prev.forEach((v) => {
-            if (!map.has(v.id)) map.set(v.id, v);
+      try {
+        const results = await searchVisitorsServer(visitorSearch, 50);
+        if (results && results.length > 0) {
+          setExistingVisitors((prev) => {
+            const map = new Map<string, Visitor>();
+            results.forEach((v) => map.set(v.id, v));
+            prev.forEach((v) => {
+              if (!map.has(v.id)) map.set(v.id, v);
+            });
+            return Array.from(map.values());
           });
-          return Array.from(map.values());
-        });
+        }
+      } catch (err) {
+        console.error('Erreur recherche serveur visiteurs:', err);
+      } finally {
+        setSearchingServer(false);
       }
-      setSearchingServer(false);
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(timer);
   }, [visitorSearch]);
 
-  // Inline smart duplicate detection as the user fills out name/phone
+  // Inline smart duplicate detection as the user fills out name/phone/email
   useEffect(() => {
     if (formData.visitor_id || isEditing) {
-      setSuggestedVisitor(null);
+      setSuggestedVisitors([]);
       return;
     }
 
     const phoneDigits = normalizePhone(formData.phone);
     const firstName = formData.first_name.trim();
     const lastName = formData.last_name.trim();
+    const email = formData.email.trim();
 
-    if (phoneDigits.length < 6 && (firstName.length < 2 || lastName.length < 2)) {
-      setSuggestedVisitor(null);
+    // Trigger if we have enough info: phone (>=4 digits), names (>=2 chars), or email
+    const hasEnoughInfo =
+      phoneDigits.length >= 4 ||
+      firstName.length >= 2 ||
+      lastName.length >= 2 ||
+      (email.length >= 4 && email.includes('@'));
+
+    if (!hasEnoughInfo) {
+      setSuggestedVisitors([]);
       return;
     }
 
     const timer = setTimeout(async () => {
-      let match: Visitor | null = null;
+      const searchTerms = [firstName, lastName, phoneDigits, email]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
 
-      if (phoneDigits.length >= 6) {
-        const { data } = await supabase
-          .from('visitors')
-          .select('*')
-          .or(`phone.ilike.%${phoneDigits.slice(-8)}%`)
-          .limit(1);
-        if (data && data.length > 0) match = data[0];
+      if (!searchTerms) {
+        setSuggestedVisitors([]);
+        return;
       }
 
-      if (!match && firstName.length >= 2 && lastName.length >= 2) {
-        const { data } = await supabase
-          .from('visitors')
-          .select('*')
-          .ilike('first_name', `%${firstName}%`)
-          .ilike('last_name', `%${lastName}%`)
-          .limit(1);
-        if (data && data.length > 0) match = data[0];
-      }
+      try {
+        const matches = await searchVisitorsServer(searchTerms, 4);
+        // Filtrer les correspondances pertinentes
+        const relevant = matches.filter((m) => {
+          const mPhone = normalizePhone(m.phone);
+          const phoneMatch = phoneDigits.length >= 4 && (mPhone.includes(phoneDigits) || phoneDigits.includes(mPhone.slice(-8)));
+          const nameMatch = matchVisitorLocally(m, `${firstName} ${lastName}`.trim());
+          const emailMatch = email && m.email && m.email.toLowerCase() === email.toLowerCase();
+          return phoneMatch || nameMatch || emailMatch;
+        });
 
-      setSuggestedVisitor(match);
-    }, 350);
+        setSuggestedVisitors(relevant);
+      } catch (err) {
+        console.error('Erreur détection intelligente:', err);
+      }
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [formData.phone, formData.first_name, formData.last_name, formData.visitor_id, isEditing]);
+  }, [formData.phone, formData.first_name, formData.last_name, formData.email, formData.visitor_id, isEditing]);
 
   const fetchServices = async () => {
     const { data } = await supabase.from('services').select('*').eq('is_active', true).order('name');
@@ -172,7 +178,7 @@ export default function VisitFormPage() {
   };
 
   const fetchExistingVisitors = async () => {
-    const { data } = await supabase.from('visitors').select('*').order('created_at', { ascending: false }).limit(200);
+    const { data } = await supabase.from('visitors').select('*').order('created_at', { ascending: false }).limit(300);
     if (data) setExistingVisitors(data);
   };
 
@@ -238,7 +244,22 @@ export default function VisitFormPage() {
     }));
     setShowVisitorSearch(false);
     setVisitorSearch('');
-    setSuggestedVisitor(null);
+    setSuggestedVisitors([]);
+  };
+
+  const clearSelectedVisitor = () => {
+    setFormData((prev) => ({
+      ...prev,
+      visitor_id: '',
+      first_name: '',
+      last_name: '',
+      visitor_type: 'client',
+      phone: '',
+      email: '',
+      company: '',
+      visitor_notes: '',
+    }));
+    setSuggestedVisitors([]);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,43 +371,23 @@ export default function VisitFormPage() {
 
       // Check if creating new visitor or using existing
       if (!visitorId) {
-        let matchedVisitor: Visitor | null = null;
-        const cleanPhone = normalizePhone(formData.phone);
-
-        // 1. Check duplicate by phone number (if 6 or more digits provided)
-        if (cleanPhone.length >= 6) {
-          const { data: phoneMatches } = await supabase
-            .from('visitors')
-            .select('*')
-            .or(`phone.ilike.%${cleanPhone.slice(-8)}%`)
-            .limit(1);
-          if (phoneMatches && phoneMatches.length > 0) {
-            matchedVisitor = phoneMatches[0];
-          }
-        }
-
-        // 2. Check duplicate by exact full name if phone didn't match
-        if (!matchedVisitor && formData.first_name.trim() && formData.last_name.trim()) {
-          const { data: nameMatches } = await supabase
-            .from('visitors')
-            .select('*')
-            .ilike('first_name', formData.first_name.trim())
-            .ilike('last_name', formData.last_name.trim())
-            .limit(1);
-          if (nameMatches && nameMatches.length > 0) {
-            matchedVisitor = nameMatches[0];
-          }
-        }
+        // Automatic intelligent matching before inserting a potential duplicate
+        const matchedVisitor = await findMatchingVisitor({
+          phone: formData.phone,
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+        });
 
         if (matchedVisitor) {
-          // Reuse existing visitor profile automatically
+          // Reuse existing visitor profile automatically and update with any new details
           visitorId = matchedVisitor.id;
           await supabase
             .from('visitors')
             .update({
-              first_name: formData.first_name,
-              last_name: formData.last_name,
-              visitor_type: formData.visitor_type,
+              first_name: formData.first_name || matchedVisitor.first_name,
+              last_name: formData.last_name || matchedVisitor.last_name,
+              visitor_type: formData.visitor_type || matchedVisitor.visitor_type,
               phone: formData.phone || matchedVisitor.phone,
               email: formData.email || matchedVisitor.email,
               company: formData.company || matchedVisitor.company,
@@ -399,13 +400,13 @@ export default function VisitFormPage() {
           const { data: newVisitor, error: visitorError } = await supabase
             .from('visitors')
             .insert({
-              first_name: formData.first_name,
-              last_name: formData.last_name,
+              first_name: formData.first_name.trim(),
+              last_name: formData.last_name.trim(),
               visitor_type: formData.visitor_type,
-              phone: formData.phone || null,
-              email: formData.email || null,
-              company: formData.company || null,
-              notes: formData.visitor_notes || null,
+              phone: formData.phone?.trim() || null,
+              email: formData.email?.trim() || null,
+              company: formData.company?.trim() || null,
+              notes: formData.visitor_notes?.trim() || null,
             })
             .select()
             .single();
@@ -418,13 +419,13 @@ export default function VisitFormPage() {
         const { error: updateVisitorError } = await supabase
           .from('visitors')
           .update({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
+            first_name: formData.first_name.trim(),
+            last_name: formData.last_name.trim(),
             visitor_type: formData.visitor_type,
-            phone: formData.phone || null,
-            email: formData.email || null,
-            company: formData.company || null,
-            notes: formData.visitor_notes || null,
+            phone: formData.phone?.trim() || null,
+            email: formData.email?.trim() || null,
+            company: formData.company?.trim() || null,
+            notes: formData.visitor_notes?.trim() || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', visitorId);
@@ -493,21 +494,9 @@ export default function VisitFormPage() {
     }
   };
 
+  // Filtrage des visiteurs existants
   const filteredVisitors = visitorSearch
-    ? existingVisitors.filter((v) => {
-        const term = visitorSearch.toLowerCase().trim();
-        const digits = term.replace(/\D/g, '');
-        const vPhoneDigits = normalizePhone(v.phone);
-
-        const matchesPhone = digits.length >= 3 && vPhoneDigits.includes(digits);
-        const matchesText =
-          v.first_name.toLowerCase().includes(term) ||
-          v.last_name.toLowerCase().includes(term) ||
-          v.company?.toLowerCase().includes(term) ||
-          v.email?.toLowerCase().includes(term);
-
-        return matchesPhone || matchesText;
-      })
+    ? existingVisitors.filter((v) => matchVisitorLocally(v, visitorSearch))
     : existingVisitors;
 
   if (loading) {
@@ -530,7 +519,7 @@ export default function VisitFormPage() {
             {isEditing ? 'Modifier la visite' : 'Enregistrer une visite'}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-            {isEditing ? 'Modifiez les informations de la visite sélectionnée' : 'Enregistrez l\'arrivée d\'un nouveau visiteur'}
+            {isEditing ? 'Modifiez les informations de la visite sélectionnée' : "Enregistrez l'arrivée d'un nouveau visiteur ou retrouvez un profil existant"}
           </p>
         </div>
         <button onClick={() => navigate(-1)} className="btn-secondary self-start sm:self-auto px-5 py-2.5">
@@ -551,112 +540,163 @@ export default function VisitFormPage() {
         {/* Visitor Selection (Only when creating a new visit) */}
         {!isEditing && (
           <div className="card">
-            <div className="card-header">
-              <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Visiteur existant</h2>
+            <div className="card-header flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                <Search className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                Recherche Visiteur Existant
+              </h2>
+              {formData.visitor_id && (
+                <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200/40">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Profil existant rattaché
+                </span>
+              )}
             </div>
             <div className="card-body space-y-4">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowVisitorSearch(!showVisitorSearch)}
-                  className={`btn-secondary ${showVisitorSearch ? 'bg-primary-50 dark:bg-primary-950/20 border-primary-500/30 text-primary-600' : ''}`}
-                >
-                  <Search className="w-4.5 h-4.5 mr-2" />
-                  Sélectionner un visiteur existant
-                </button>
-                {formData.visitor_id && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        visitor_id: '',
-                        first_name: '',
-                        last_name: '',
-                        visitor_type: 'client',
-                        phone: '',
-                        email: '',
-                        company: '',
-                        visitor_notes: '',
-                      }));
-                    }}
-                    className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
-                  >
-                    Effacer la sélection
-                  </button>
-                )}
-              </div>
-
-              {showVisitorSearch && (
-                <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 animate-slide-in-top">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Rechercher par prénom, nom, téléphone, email ou entreprise..."
-                      value={visitorSearch}
-                      onChange={(e) => setVisitorSearch(e.target.value)}
-                      className="input bg-white dark:bg-slate-900 pr-10"
-                    />
-                    {searchingServer && (
-                      <Loader2 className="w-4 h-4 text-primary-500 animate-spin absolute right-3 top-3" />
-                    )}
+              
+              {formData.visitor_id ? (
+                <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-extrabold text-sm shrink-0">
+                      <UserCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                        {formData.first_name} {formData.last_name}
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        🏢 {formData.company || 'Aucune entreprise'} {formData.phone ? `• 📞 ${formData.phone}` : ''}
+                      </p>
+                    </div>
                   </div>
-                  <div className="max-h-48 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 scrollbar-thin">
-                    {filteredVisitors.slice(0, 20).map((visitor) => (
-                      <button
-                        key={visitor.id}
-                        type="button"
-                        onClick={() => selectExistingVisitor(visitor)}
-                        className={`w-full text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between transition-colors ${
-                          formData.visitor_id === visitor.id ? 'bg-primary-50/50 dark:bg-primary-950/30' : ''
-                        }`}
-                      >
-                        <div>
-                          <p className="font-bold text-sm text-slate-800 dark:text-white">
-                            {visitor.first_name} {visitor.last_name}
-                          </p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mt-0.5">
-                            {visitor.company || 'Aucune entreprise'} {visitor.phone ? `• ${visitor.phone}` : ''}
-                          </p>
-                        </div>
-                        <span className="badge-gray text-[10px] uppercase font-bold">{visitor.visitor_type}</span>
-                      </button>
-                    ))}
-                    {filteredVisitors.length === 0 && !searchingServer && (
-                      <p className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">Aucun visiteur trouvé dans le système</p>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowVisitorSearch(true)}
+                      className="btn-secondary text-xs py-1.5 px-3"
+                    >
+                      Changer de visiteur
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearSelectedVisitor}
+                      className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-1.5 rounded-xl transition-colors"
+                    >
+                      Créer un nouveau
+                    </button>
                   </div>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 dark:text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher par nom complet (ex: KOUASSI Jean), téléphone (ex: 0701020304), entreprise..."
+                      value={visitorSearch}
+                      onFocus={() => setShowVisitorSearch(true)}
+                      onChange={(e) => {
+                        setVisitorSearch(e.target.value);
+                        if (!showVisitorSearch) setShowVisitorSearch(true);
+                      }}
+                      className="input pl-11 pr-10 bg-slate-50/50 dark:bg-slate-950/40 focus:bg-white dark:focus:bg-slate-900"
+                    />
+                    {searchingServer && (
+                      <Loader2 className="w-4 h-4 text-primary-500 animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+                    )}
+                  </div>
+
+                  {showVisitorSearch && (
+                    <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-100 dark:border-slate-800/80 animate-slide-in-top">
+                      <div className="flex items-center justify-between px-2 pb-1 border-b border-slate-200/40 dark:border-slate-800/40 text-xs text-slate-500 dark:text-slate-400">
+                        <span>{filteredVisitors.length} visiteur(s) correspondant(s)</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowVisitorSearch(false)}
+                          className="hover:text-slate-800 dark:hover:text-white font-bold"
+                        >
+                          Fermer
+                        </button>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 scrollbar-thin">
+                        {filteredVisitors.slice(0, 25).map((visitor) => (
+                          <button
+                            key={visitor.id}
+                            type="button"
+                            onClick={() => selectExistingVisitor(visitor)}
+                            className="w-full text-left p-3 hover:bg-primary-50/40 dark:hover:bg-primary-950/30 flex items-center justify-between transition-colors group"
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <p className="font-extrabold text-sm text-slate-800 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                                {visitor.first_name} {visitor.last_name}
+                              </p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {visitor.company && <span>🏢 {visitor.company}</span>}
+                                {visitor.phone && <span>📞 {visitor.phone}</span>}
+                                {visitor.email && <span>✉️ {visitor.email}</span>}
+                              </div>
+                            </div>
+                            <span className="badge-gray text-[10px] uppercase font-bold shrink-0">{visitor.visitor_type}</span>
+                          </button>
+                        ))}
+                        {filteredVisitors.length === 0 && !searchingServer && (
+                          <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">
+                            Aucun visiteur trouvé pour "{visitorSearch}". Vous pouvez saisir les informations ci-dessous pour créer un nouveau profil.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
+
             </div>
           </div>
         )}
 
         {/* Visitor Information Card */}
         <div className="card">
-          <div className="card-header">
+          <div className="card-header flex items-center justify-between">
             <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Identité du visiteur</h2>
+            {formData.visitor_id && (
+              <span className="text-[11px] font-bold text-primary-600 dark:text-primary-400">
+                (Profil enregistré)
+              </span>
+            )}
           </div>
           <div className="card-body space-y-4">
             
-            {/* Smart Suggested Visitor Card */}
-            {suggestedVisitor && !formData.visitor_id && (
-              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 rounded-xl flex items-center justify-between gap-3 animate-slide-in-top">
-                <div className="flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 font-medium">
+            {/* Smart Suggested Visitors Card */}
+            {suggestedVisitors.length > 0 && !formData.visitor_id && (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 rounded-xl space-y-2 animate-slide-in-top">
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-200">
                   <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
                   <span>
-                    Visiteur existant trouvé dans le système : <strong>{suggestedVisitor.first_name} {suggestedVisitor.last_name}</strong> {suggestedVisitor.company ? `(${suggestedVisitor.company})` : ''} {suggestedVisitor.phone ? `• Tél: ${suggestedVisitor.phone}` : ''}
+                    Visiteur(s) existant(s) détecté(s) correspondant à votre saisie :
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => selectExistingVisitor(suggestedVisitor)}
-                  className="btn-primary text-xs py-1.5 px-3 shrink-0 shadow-none font-bold"
-                >
-                  Utiliser ce profil
-                </button>
+                <div className="divide-y divide-amber-200/50 dark:divide-amber-800/40">
+                  {suggestedVisitors.map((candidate) => (
+                    <div key={candidate.id} className="pt-2 pb-1.5 flex items-center justify-between gap-3 text-xs">
+                      <div>
+                        <strong className="text-slate-900 dark:text-white">{candidate.first_name} {candidate.last_name}</strong>{' '}
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {candidate.company ? `(${candidate.company})` : ''} {candidate.phone ? `• Tél: ${candidate.phone}` : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => selectExistingVisitor(candidate)}
+                        className="btn-primary text-xs py-1 px-2.5 shrink-0 shadow-none font-bold"
+                      >
+                        Utiliser ce profil
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="first_name" className="label">
@@ -669,6 +709,7 @@ export default function VisitFormPage() {
                   value={formData.first_name}
                   onChange={handleInputChange}
                   className="input"
+                  placeholder="Ex: Jean"
                   required
                 />
               </div>
@@ -683,6 +724,7 @@ export default function VisitFormPage() {
                   value={formData.last_name}
                   onChange={handleInputChange}
                   className="input"
+                  placeholder="Ex: KOUASSI"
                   required
                 />
               </div>
@@ -722,7 +764,7 @@ export default function VisitFormPage() {
                     value={formData.phone}
                     onChange={handleInputChange}
                     className="input pl-11"
-                    placeholder="+225 07 00 00 00 00"
+                    placeholder="07 00 00 00 00 ou +225 ..."
                   />
                 </div>
               </div>
@@ -758,7 +800,7 @@ export default function VisitFormPage() {
                   value={formData.company}
                   onChange={handleInputChange}
                   className="input pl-11"
-                  placeholder="Nom de l'entreprise"
+                  placeholder="Nom de l'entreprise ou particulier"
                 />
               </div>
             </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase, Visit, Service } from '../lib/supabase';
+import { searchVisitorsServer } from '../lib/visitorUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import {
@@ -49,6 +50,13 @@ export default function VisitsListPage() {
 
   const fetchVisits = async () => {
     setLoading(true);
+
+    let matchingVisitorIds: string[] = [];
+    if (searchQuery.trim()) {
+      const visitors = await searchVisitorsServer(searchQuery, 40);
+      matchingVisitorIds = visitors.map((v) => v.id);
+    }
+
     let query = supabase
       .from('visits')
       .select(
@@ -70,8 +78,13 @@ export default function VisitsListPage() {
     if (filters.dateTo) query = query.lte('arrival_time', filters.dateTo);
 
     // Apply search
-    if (searchQuery) {
-      query = query.or(`visit_code.ilike.%${searchQuery}%,purpose.ilike.%${searchQuery}%,visitor.first_name.ilike.%${searchQuery}%,visitor.last_name.ilike.%${searchQuery}%,visitor.company.ilike.%${searchQuery}%`);
+    if (searchQuery.trim()) {
+      const escaped = searchQuery.replace(/[%_,]/g, ' ').trim();
+      const orList = [`visit_code.ilike.%${escaped}%`, `purpose.ilike.%${escaped}%`];
+      if (matchingVisitorIds.length > 0) {
+        orList.push(`visitor_id.in.(${matchingVisitorIds.map((id) => `"${id}"`).join(',')})`);
+      }
+      query = query.or(orList.join(','));
     }
 
     query = query.range(

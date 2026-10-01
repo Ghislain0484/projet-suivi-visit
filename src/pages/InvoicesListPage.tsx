@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase, Invoice, Service } from '../lib/supabase';
+import { searchVisitorsServer } from '../lib/visitorUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import { format } from 'date-fns';
@@ -130,29 +131,20 @@ export default function InvoicesListPage() {
 
       // 2. Multi-stage search: Resolve matching visits if searchQuery is active
       let matchingVisitIds: string[] = [];
-      if (searchQuery) {
-        const escapedQuery = searchQuery.replace(/['()[\],.]/g, "%");
-        const digits = searchQuery.replace(/\D/g, '');
-        const { data: visitorsData } = await supabase
-          .from('visitors')
-          .select('id')
-          .or(
-            digits.length >= 3
-              ? `first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%,phone.ilike.%${digits}%`
-              : `first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%`
-          );
-        
-        const visitorIds = visitorsData?.map(v => v.id) || [];
+      if (searchQuery.trim()) {
+        const escapedQuery = searchQuery.replace(/[%_,]/g, ' ').trim();
+        const visitorsData = await searchVisitorsServer(searchQuery, 40);
+        const visitorIds = visitorsData?.map((v) => v.id) || [];
 
         let visitSearch = supabase.from('visits').select('id');
         if (visitorIds.length > 0) {
-          visitSearch = visitSearch.or(`visit_code.ilike.%${escapedQuery}%,purpose.ilike.%${escapedQuery}%,visitor_id.in.(${visitorIds.map(id => `"${id}"`).join(',')})`);
+          visitSearch = visitSearch.or(`visit_code.ilike.%${escapedQuery}%,purpose.ilike.%${escapedQuery}%,visitor_id.in.(${visitorIds.map((id) => `"${id}"`).join(',')})`);
         } else {
           visitSearch = visitSearch.or(`visit_code.ilike.%${escapedQuery}%,purpose.ilike.%${escapedQuery}%`);
         }
 
         const { data: visitsData } = await visitSearch;
-        matchingVisitIds = visitsData?.map(v => v.id) || [];
+        matchingVisitIds = visitsData?.map((v) => v.id) || [];
 
         if (matchingVisitIds.length === 0) {
           setInvoices([]);

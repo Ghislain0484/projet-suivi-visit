@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Link, useNavigate } from 'react-router-dom';
+import { matchVisitorLocally } from '../lib/visitorUtils';
 import {
   Search,
   User,
@@ -50,22 +51,9 @@ export default function VisitorsListPage() {
 
     const { data, error } = await query;
     if (!error && data) {
-      const term = searchQuery.toLowerCase().trim();
-      const digits = term.replace(/\D/g, '');
-
-      // Client-side search with phone digit normalization
-      const filtered = term
-        ? data.filter((v) => {
-            const vPhoneDigits = (v.phone || '').replace(/\D/g, '');
-            const matchesPhone = digits.length >= 3 && vPhoneDigits.includes(digits);
-            const matchesText =
-              v.first_name.toLowerCase().includes(term) ||
-              v.last_name.toLowerCase().includes(term) ||
-              v.company?.toLowerCase().includes(term) ||
-              v.email?.toLowerCase().includes(term);
-
-            return matchesPhone || matchesText;
-          })
+      // Smart search with phone digit normalization, multi-words, inverted names and accent stripping
+      const filtered = searchQuery.trim()
+        ? data.filter((v) => matchVisitorLocally(v, searchQuery))
         : data;
       setVisitors(filtered);
     }

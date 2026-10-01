@@ -132,10 +132,15 @@ export default function InvoicesListPage() {
       let matchingVisitIds: string[] = [];
       if (searchQuery) {
         const escapedQuery = searchQuery.replace(/['()[\],.]/g, "%");
+        const digits = searchQuery.replace(/\D/g, '');
         const { data: visitorsData } = await supabase
           .from('visitors')
           .select('id')
-          .or(`first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%`);
+          .or(
+            digits.length >= 3
+              ? `first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%,phone.ilike.%${digits}%`
+              : `first_name.ilike.%${escapedQuery}%,last_name.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%`
+          );
         
         const visitorIds = visitorsData?.map(v => v.id) || [];
 

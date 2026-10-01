@@ -50,15 +50,22 @@ export default function VisitorsListPage() {
 
     const { data, error } = await query;
     if (!error && data) {
-      // Client-side search
-      const filtered = searchQuery
-        ? data.filter(
-            (v) =>
-              v.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              v.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              v.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              v.email?.toLowerCase().includes(searchQuery.toLowerCase())
-          )
+      const term = searchQuery.toLowerCase().trim();
+      const digits = term.replace(/\D/g, '');
+
+      // Client-side search with phone digit normalization
+      const filtered = term
+        ? data.filter((v) => {
+            const vPhoneDigits = (v.phone || '').replace(/\D/g, '');
+            const matchesPhone = digits.length >= 3 && vPhoneDigits.includes(digits);
+            const matchesText =
+              v.first_name.toLowerCase().includes(term) ||
+              v.last_name.toLowerCase().includes(term) ||
+              v.company?.toLowerCase().includes(term) ||
+              v.email?.toLowerCase().includes(term);
+
+            return matchesPhone || matchesText;
+          })
         : data;
       setVisitors(filtered);
     }

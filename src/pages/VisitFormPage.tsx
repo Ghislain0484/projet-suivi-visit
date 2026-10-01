@@ -29,9 +29,14 @@ export default function VisitFormPage() {
   const [existingVisitors, setExistingVisitors] = useState<Visitor[]>([]);
   const [showVisitorSearch, setShowVisitorSearch] = useState(false);
   const [visitorSearch, setVisitorSearch] = useState('');
+  const [searchingServer, setSearchingServer] = useState(false);
+  const [suggestedVisitor, setSuggestedVisitor] = useState<Visitor | null>(null);
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Helper for normalizing phone numbers to digits only
+  const normalizePhone = (phone: string | null | undefined) => (phone || '').replace(/\D/g, '');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -79,13 +84,95 @@ export default function VisitFormPage() {
     }
   }, [id]);
 
+  // Real-time server-side debounced search for the visitor search modal
+  useEffect(() => {
+    if (!visitorSearch.trim()) return;
+
+    const timer = setTimeout(async () => {
+      setSearchingServer(true);
+      const term = visitorSearch.trim();
+      const escaped = term.replace(/[%_]/g, '\\$&');
+      const digits = term.replace(/\D/g, '');
+
+      let query = supabase.from('visitors').select('*');
+      if (digits.length >= 3) {
+        query = query.or(
+          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,company.ilike.%${escaped}%,phone.ilike.%${digits}%,email.ilike.%${escaped}%`
+        );
+      } else {
+        query = query.or(
+          `first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,company.ilike.%${escaped}%,email.ilike.%${escaped}%`
+        );
+      }
+
+      const { data } = await query.order('last_name').limit(50);
+      if (data) {
+        setExistingVisitors((prev) => {
+          const map = new Map<string, Visitor>();
+          data.forEach((v) => map.set(v.id, v));
+          prev.forEach((v) => {
+            if (!map.has(v.id)) map.set(v.id, v);
+          });
+          return Array.from(map.values());
+        });
+      }
+      setSearchingServer(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [visitorSearch]);
+
+  // Inline smart duplicate detection as the user fills out name/phone
+  useEffect(() => {
+    if (formData.visitor_id || isEditing) {
+      setSuggestedVisitor(null);
+      return;
+    }
+
+    const phoneDigits = normalizePhone(formData.phone);
+    const firstName = formData.first_name.trim();
+    const lastName = formData.last_name.trim();
+
+    if (phoneDigits.length < 6 && (firstName.length < 2 || lastName.length < 2)) {
+      setSuggestedVisitor(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      let match: Visitor | null = null;
+
+      if (phoneDigits.length >= 6) {
+        const { data } = await supabase
+          .from('visitors')
+          .select('*')
+          .or(`phone.ilike.%${phoneDigits.slice(-8)}%`)
+          .limit(1);
+        if (data && data.length > 0) match = data[0];
+      }
+
+      if (!match && firstName.length >= 2 && lastName.length >= 2) {
+        const { data } = await supabase
+          .from('visitors')
+          .select('*')
+          .ilike('first_name', `%${firstName}%`)
+          .ilike('last_name', `%${lastName}%`)
+          .limit(1);
+        if (data && data.length > 0) match = data[0];
+      }
+
+      setSuggestedVisitor(match);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [formData.phone, formData.first_name, formData.last_name, formData.visitor_id, isEditing]);
+
   const fetchServices = async () => {
     const { data } = await supabase.from('services').select('*').eq('is_active', true).order('name');
     if (data) setServices(data);
   };
 
   const fetchExistingVisitors = async () => {
-    const { data } = await supabase.from('visitors').select('*').order('last_name').limit(100);
+    const { data } = await supabase.from('visitors').select('*').order('created_at', { ascending: false }).limit(200);
     if (data) setExistingVisitors(data);
   };
 
@@ -119,6 +206,7 @@ export default function VisitFormPage() {
         assigned_collaborator_id: data.assigned_collaborator_id || '',
         service_id: data.service_id || '',
         comments: data.comments || '',
+        branch: data.branch || 'Siège (Bonoua)',
       });
       if (data.attachments) {
         setAttachments(data.attachments);
@@ -150,6 +238,7 @@ export default function VisitFormPage() {
     }));
     setShowVisitorSearch(false);
     setVisitorSearch('');
+    setSuggestedVisitor(null);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -261,23 +350,69 @@ export default function VisitFormPage() {
 
       // Check if creating new visitor or using existing
       if (!visitorId) {
-        // Create new visitor
-        const { data: newVisitor, error: visitorError } = await supabase
-          .from('visitors')
-          .insert({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            visitor_type: formData.visitor_type,
-            phone: formData.phone || null,
-            email: formData.email || null,
-            company: formData.company || null,
-            notes: formData.visitor_notes || null,
-          })
-          .select()
-          .single();
+        let matchedVisitor: Visitor | null = null;
+        const cleanPhone = normalizePhone(formData.phone);
 
-        if (visitorError) throw new Error(visitorError.message);
-        visitorId = newVisitor.id;
+        // 1. Check duplicate by phone number (if 6 or more digits provided)
+        if (cleanPhone.length >= 6) {
+          const { data: phoneMatches } = await supabase
+            .from('visitors')
+            .select('*')
+            .or(`phone.ilike.%${cleanPhone.slice(-8)}%`)
+            .limit(1);
+          if (phoneMatches && phoneMatches.length > 0) {
+            matchedVisitor = phoneMatches[0];
+          }
+        }
+
+        // 2. Check duplicate by exact full name if phone didn't match
+        if (!matchedVisitor && formData.first_name.trim() && formData.last_name.trim()) {
+          const { data: nameMatches } = await supabase
+            .from('visitors')
+            .select('*')
+            .ilike('first_name', formData.first_name.trim())
+            .ilike('last_name', formData.last_name.trim())
+            .limit(1);
+          if (nameMatches && nameMatches.length > 0) {
+            matchedVisitor = nameMatches[0];
+          }
+        }
+
+        if (matchedVisitor) {
+          // Reuse existing visitor profile automatically
+          visitorId = matchedVisitor.id;
+          await supabase
+            .from('visitors')
+            .update({
+              first_name: formData.first_name,
+              last_name: formData.last_name,
+              visitor_type: formData.visitor_type,
+              phone: formData.phone || matchedVisitor.phone,
+              email: formData.email || matchedVisitor.email,
+              company: formData.company || matchedVisitor.company,
+              notes: formData.visitor_notes || matchedVisitor.notes,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', visitorId);
+        } else {
+          // Create new visitor
+          const { data: newVisitor, error: visitorError } = await supabase
+            .from('visitors')
+            .insert({
+              first_name: formData.first_name,
+              last_name: formData.last_name,
+              visitor_type: formData.visitor_type,
+              phone: formData.phone || null,
+              email: formData.email || null,
+              company: formData.company || null,
+              notes: formData.visitor_notes || null,
+            })
+            .select()
+            .single();
+
+          if (visitorError) throw new Error(visitorError.message);
+          visitorId = newVisitor.id;
+        }
       } else {
         // Update existing visitor
         const { error: updateVisitorError } = await supabase
@@ -359,12 +494,20 @@ export default function VisitFormPage() {
   };
 
   const filteredVisitors = visitorSearch
-    ? existingVisitors.filter(
-        (v) =>
-          v.first_name.toLowerCase().includes(visitorSearch.toLowerCase()) ||
-          v.last_name.toLowerCase().includes(visitorSearch.toLowerCase()) ||
-          v.company?.toLowerCase().includes(visitorSearch.toLowerCase())
-      )
+    ? existingVisitors.filter((v) => {
+        const term = visitorSearch.toLowerCase().trim();
+        const digits = term.replace(/\D/g, '');
+        const vPhoneDigits = normalizePhone(v.phone);
+
+        const matchesPhone = digits.length >= 3 && vPhoneDigits.includes(digits);
+        const matchesText =
+          v.first_name.toLowerCase().includes(term) ||
+          v.last_name.toLowerCase().includes(term) ||
+          v.company?.toLowerCase().includes(term) ||
+          v.email?.toLowerCase().includes(term);
+
+        return matchesPhone || matchesText;
+      })
     : existingVisitors;
 
   if (loading) {
@@ -446,15 +589,20 @@ export default function VisitFormPage() {
 
               {showVisitorSearch && (
                 <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-950/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 animate-slide-in-top">
-                  <input
-                    type="text"
-                    placeholder="Filtrer les visiteurs par nom ou entreprise..."
-                    value={visitorSearch}
-                    onChange={(e) => setVisitorSearch(e.target.value)}
-                    className="input bg-white dark:bg-slate-900"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Rechercher par prénom, nom, téléphone, email ou entreprise..."
+                      value={visitorSearch}
+                      onChange={(e) => setVisitorSearch(e.target.value)}
+                      className="input bg-white dark:bg-slate-900 pr-10"
+                    />
+                    {searchingServer && (
+                      <Loader2 className="w-4 h-4 text-primary-500 animate-spin absolute right-3 top-3" />
+                    )}
+                  </div>
                   <div className="max-h-48 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 scrollbar-thin">
-                    {filteredVisitors.slice(0, 10).map((visitor) => (
+                    {filteredVisitors.slice(0, 20).map((visitor) => (
                       <button
                         key={visitor.id}
                         type="button"
@@ -468,13 +616,13 @@ export default function VisitFormPage() {
                             {visitor.first_name} {visitor.last_name}
                           </p>
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mt-0.5">
-                            {visitor.company || 'Aucune entreprise'}
+                            {visitor.company || 'Aucune entreprise'} {visitor.phone ? `• ${visitor.phone}` : ''}
                           </p>
                         </div>
                         <span className="badge-gray text-[10px] uppercase font-bold">{visitor.visitor_type}</span>
                       </button>
                     ))}
-                    {filteredVisitors.length === 0 && (
+                    {filteredVisitors.length === 0 && !searchingServer && (
                       <p className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">Aucun visiteur trouvé dans le système</p>
                     )}
                   </div>
@@ -490,6 +638,25 @@ export default function VisitFormPage() {
             <h2 className="font-bold text-slate-800 dark:text-white text-sm uppercase tracking-wider">Identité du visiteur</h2>
           </div>
           <div className="card-body space-y-4">
+            
+            {/* Smart Suggested Visitor Card */}
+            {suggestedVisitor && !formData.visitor_id && (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 rounded-xl flex items-center justify-between gap-3 animate-slide-in-top">
+                <div className="flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200 font-medium">
+                  <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span>
+                    Visiteur existant trouvé dans le système : <strong>{suggestedVisitor.first_name} {suggestedVisitor.last_name}</strong> {suggestedVisitor.company ? `(${suggestedVisitor.company})` : ''} {suggestedVisitor.phone ? `• Tél: ${suggestedVisitor.phone}` : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => selectExistingVisitor(suggestedVisitor)}
+                  className="btn-primary text-xs py-1.5 px-3 shrink-0 shadow-none font-bold"
+                >
+                  Utiliser ce profil
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="first_name" className="label">

@@ -80,7 +80,7 @@ export default function RHPage() {
   const [collaborators, setCollaborators] = useState<Profile[]>([]);
   const [activeTab, setActiveTab] = useState<'personal' | 'interns' | 'team'>('personal');
 
-  const isAdminOrRH = profile && ['admin', 'director', 'reception'].includes(profile.role);
+  const isAdminOrRH = profile && ['admin', 'director', 'reception', 'grh'].includes(profile.role);
 
   // Interns Kiosk state
   const [interns, setInterns] = useState<Intern[]>([]);

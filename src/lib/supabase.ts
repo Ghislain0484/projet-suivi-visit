@@ -17,7 +17,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'cashier' | 'collaborator' | 'nurse' | 'lawyer';
+export type UserRole = 'admin' | 'director' | 'reception' | 'service_manager' | 'accounting' | 'grh' | 'cashier' | 'collaborator' | 'nurse' | 'lawyer';
 
 export type VisitorType = 'client' | 'prospect' | 'supplier' | 'partner' | 'other';
 
@@ -284,17 +284,17 @@ export interface MedicalRequest {
 export interface MedicalFile {
   id: string;
   user_id: string;
-  matricule: string | null;
-  gender: 'M' | 'F' | null;
-  birth_date: string | null;
-  blood_group: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
-  emergency_contact_name: string | null;
-  emergency_contact_phone: string | null;
-  department: string | null;
-  position: string | null;
+  matricule: string;
+  gender: 'M' | 'F';
+  birth_date: string;
+  blood_group: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
   allergies: string | null;
   vaccinations: string | null;
   current_treatments: string | null;
+  department: string | null;
+  position: string | null;
   created_at: string;
   updated_at: string;
   profile?: Profile;
@@ -303,7 +303,7 @@ export interface MedicalFile {
 export interface PharmacyProduct {
   id: string;
   name: string;
-  reference: string | null;
+  reference: string;
   category: 'antalgiques' | 'antibiotiques' | 'antiseptiques' | 'pansements' | 'premiers_secours' | 'consommables' | 'autre';
   quantity: number;
   min_threshold: number;
@@ -371,3 +371,43 @@ export interface MedicalRest {
   profile?: Profile;
 }
 
+export type TaskStatus = 'pending' | 'in_progress' | 'review' | 'blocked' | 'completed' | 'cancelled';
+
+export interface ServiceTask {
+  id: string;
+  title: string;
+  description: string | null;
+  service_id: string;
+  visitor_id: string | null;
+  visit_id: string | null;
+  assigned_to: string | null;
+  created_by: string | null;
+  start_date: string;
+  due_date: string;
+  estimated_days: number;
+  progress_percentage: number;
+  current_stage: string;
+  priority: Priority;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
+  service?: Service;
+  visitor?: Visitor;
+  assigned_collaborator?: Profile;
+  creator?: Profile;
+  progress_logs?: TaskProgressLog[];
+}
+
+export interface TaskProgressLog {
+  id: string;
+  task_id: string;
+  logged_by: string;
+  log_date: string;
+  progress_percentage: number;
+  stage_label: string | null;
+  summary: string;
+  status: TaskStatus;
+  blockers: string | null;
+  created_at: string;
+  author?: Profile;
+}

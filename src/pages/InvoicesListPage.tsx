@@ -111,7 +111,11 @@ export default function InvoicesListPage() {
         statsQuery = statsQuery.eq('payment_status', filters.payment_status);
       }
       if (filters.service_status) statsQuery = statsQuery.eq('service_status', filters.service_status);
-      if (filters.service_id) statsQuery = statsQuery.eq('responsible_service_id', filters.service_id);
+      if (profile?.role === 'service_manager' && profile.service_id) {
+        statsQuery = statsQuery.eq('responsible_service_id', profile.service_id);
+      } else if (filters.service_id) {
+        statsQuery = statsQuery.eq('responsible_service_id', filters.service_id);
+      }
       if (filters.is_billable) statsQuery = statsQuery.eq('is_billable', filters.is_billable === 'yes');
 
       const { data: statsData } = await statsQuery;
@@ -177,7 +181,11 @@ export default function InvoicesListPage() {
         listQuery = listQuery.eq('payment_status', filters.payment_status);
       }
       if (filters.service_status) listQuery = listQuery.eq('service_status', filters.service_status);
-      if (filters.service_id) listQuery = listQuery.eq('responsible_service_id', filters.service_id);
+      if (profile?.role === 'service_manager' && profile.service_id) {
+        listQuery = listQuery.eq('responsible_service_id', profile.service_id);
+      } else if (filters.service_id) {
+        listQuery = listQuery.eq('responsible_service_id', filters.service_id);
+      }
       if (filters.is_billable) listQuery = listQuery.eq('is_billable', filters.is_billable === 'yes');
 
       // Apply matching visit IDs from search
@@ -330,8 +338,8 @@ export default function InvoicesListPage() {
     );
   };
 
-  const canEdit = profile && ['admin', 'director', 'accounting', 'reception', 'service_manager'].includes(profile.role);
-  const canRecordPayment = profile && ['admin', 'director', 'accounting', 'cashier', 'reception', 'service_manager'].includes(profile.role);
+  const canEdit = profile && ['admin', 'director', 'accounting', 'reception', 'grh', 'service_manager'].includes(profile.role);
+  const canRecordPayment = profile && ['admin', 'director', 'accounting', 'cashier', 'reception', 'grh'].includes(profile.role);
 
   return (
     <div className="space-y-6">
@@ -469,18 +477,27 @@ export default function InvoicesListPage() {
               </div>
               <div>
                 <label className="label">Service</label>
-                <select
-                  value={filters.service_id}
-                  onChange={(e) => setFilters((p) => ({ ...p, service_id: e.target.value }))}
-                  className="input"
-                >
-                  <option value="">Tous les services</option>
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                {profile?.role === 'service_manager' ? (
+                  <input
+                    type="text"
+                    disabled
+                    value={services.find(s => s.id === profile.service_id)?.name || 'Mon service'}
+                    className="input bg-gray-100 dark:bg-slate-800 cursor-not-allowed text-gray-700 dark:text-gray-300 font-medium"
+                  />
+                ) : (
+                  <select
+                    value={filters.service_id}
+                    onChange={(e) => setFilters((p) => ({ ...p, service_id: e.target.value }))}
+                    className="input"
+                  >
+                    <option value="">Tous les services</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label className="label">Facturable</label>
@@ -627,7 +644,7 @@ export default function InvoicesListPage() {
                               <Edit className="w-4 h-4 text-gray-600" />
                             </button>
                           )}
-                          {profile && ['admin', 'director', 'reception', 'service_manager'].includes(profile.role) && (
+                          {profile && ['admin', 'director', 'reception', 'grh'].includes(profile.role) && (
                             <button
                               onClick={() => handleDeleteInvoice(invoice.id, (invoice as any).visit?.visit_code || '')}
                               className="p-2 hover:bg-rose-50 rounded-lg transition-colors text-slate-400 hover:text-rose-600"

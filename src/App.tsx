@@ -23,6 +23,7 @@ const RHPage = lazy(() => import('./pages/RHPage'));
 const MissionsPage = lazy(() => import('./pages/MissionsPage'));
 const PermissionsPage = lazy(() => import('./pages/PermissionsPage'));
 const InfirmeriePage = lazy(() => import('./pages/InfirmeriePage'));
+const TasksPage = lazy(() => import('./pages/TasksPage'));
 
 function UnauthorizedPage() {
   return (
@@ -89,7 +90,7 @@ function App() {
             <Route
               path="services"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception', 'grh']}>
                   <ServicesListPage />
                 </AuthGuard>
               }
@@ -99,7 +100,7 @@ function App() {
             <Route
               path="invoices"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception', 'grh']}>
                   <InvoicesListPage />
                 </AuthGuard>
               }
@@ -109,7 +110,7 @@ function App() {
             <Route
               path="reports"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception', 'grh']}>
                   <ReportsPage />
                 </AuthGuard>
               }
@@ -119,7 +120,7 @@ function App() {
             <Route
               path="users"
               element={
-                <AuthGuard requiredRoles={['admin', 'director']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'grh']}>
                   <UsersListPage />
                 </AuthGuard>
               }
@@ -141,6 +142,16 @@ function App() {
             {/* RH & Presence */}
             <Route path="rh" element={<RHPage />} />
 
+            {/* Tâches & Projets par Service */}
+            <Route
+              path="tasks"
+              element={
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception', 'grh', 'accounting', 'collaborator']}>
+                  <TasksPage />
+                </AuthGuard>
+              }
+            />
+
             {/* Missions */}
             <Route path="missions" element={<MissionsPage />} />
 
@@ -148,7 +159,7 @@ function App() {
             <Route
               path="permissions"
               element={
-                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception']}>
+                <AuthGuard requiredRoles={['admin', 'director', 'service_manager', 'reception', 'grh']}>
                   <PermissionsPage />
                 </AuthGuard>
               }

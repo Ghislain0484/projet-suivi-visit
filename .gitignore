@@ -23,3 +23,4 @@ dist-ssr
 .env
 *.zip
 scratch/
+whitelabel-starter/

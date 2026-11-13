@@ -149,6 +149,7 @@ export default function UsersListPage() {
       director: 'Directeur General',
       reception: 'Reception',
       service_manager: 'Responsable Service',
+      grh: 'GRH & Comptabilité',
       accounting: 'Comptabilite',
       cashier: 'Caissier / Caisse',
       collaborator: 'Collaborateur',
@@ -163,6 +164,7 @@ export default function UsersListPage() {
       admin: 'bg-red-100 text-red-700',
       director: 'bg-primary-100 text-primary-700',
       service_manager: 'bg-purple-100 text-purple-700',
+      grh: 'bg-violet-100 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300 border border-violet-200/30',
       accounting: 'bg-gold-100 text-gold-700',
       reception: 'bg-gray-100 text-gray-700',
       cashier: 'bg-emerald-100 text-emerald-700',
@@ -233,6 +235,7 @@ export default function UsersListPage() {
             <option value="">Tous les roles</option>
             <option value="admin">Administrateur</option>
             <option value="director">Directeur</option>
+            <option value="grh">GRH & Comptabilité</option>
             <option value="service_manager">Responsable</option>
             <option value="accounting">Comptabilite</option>
             <option value="cashier">Caissier / Caisse</option>
@@ -372,6 +375,7 @@ export default function UsersListPage() {
                 >
                   {profile?.role === 'admin' && <option value="admin">Administrateur</option>}
                   <option value="director">Directeur General</option>
+                  <option value="grh">GRH (Ressources Humaines & Comptabilité)</option>
                   <option value="service_manager">Responsable Service</option>
                   <option value="accounting">Comptabilite</option>
                   <option value="cashier">Caissier / Caisse</option>

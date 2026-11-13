@@ -26,22 +26,24 @@ import {
   MapPin,
   HeartPulse,
   FolderLock,
+  CheckSquare,
 } from 'lucide-react';
 import { supabase, Notification as NotificationType } from '../lib/supabase';
 
 const navItems = [
-  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
-  { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
-  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception', 'lawyer', 'service_manager'] },
-  { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse', 'lawyer'] },
-  { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
-  { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator'] },
-  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director', 'service_manager', 'reception'] },
-  { path: '/infirmerie', label: 'Infirmerie', icon: HeartPulse, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'cashier', 'nurse'] },
-  { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager', 'reception'] },
-  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception'] },
-  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director', 'service_manager', 'reception'] },
-  { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin', 'director'] },
+  { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'grh', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
+  { path: '/visits', label: 'Visites', icon: Clock, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'grh', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
+  { path: '/visitors', label: 'Visiteurs', icon: Users, roles: ['admin', 'director', 'reception', 'lawyer', 'service_manager', 'grh'] },
+  { path: '/agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'director', 'reception', 'service_manager', 'collaborator', 'accounting', 'grh', 'cashier', 'nurse', 'lawyer'] },
+  { path: '/rh', label: 'Espace RH', icon: User, roles: ['admin', 'director', 'reception', 'service_manager', 'grh', 'collaborator', 'accounting', 'cashier', 'nurse'] },
+  { path: '/tasks', label: 'Tâches & Projets', icon: CheckSquare, roles: ['admin', 'director', 'reception', 'service_manager', 'grh', 'accounting', 'collaborator'] },
+  { path: '/missions', label: 'Missions', icon: MapPin, roles: ['admin', 'director', 'reception', 'service_manager', 'grh', 'collaborator'] },
+  { path: '/permissions', label: 'Permissions', icon: FolderLock, roles: ['admin', 'director', 'service_manager', 'reception', 'grh'] },
+  { path: '/infirmerie', label: 'Infirmerie', icon: HeartPulse, roles: ['admin', 'director', 'reception', 'service_manager', 'grh', 'collaborator', 'accounting', 'cashier', 'nurse'] },
+  { path: '/services', label: 'Services', icon: Briefcase, roles: ['admin', 'director', 'service_manager', 'reception', 'grh'] },
+  { path: '/invoices', label: 'Suivi Financier & Caisse', icon: CreditCard, roles: ['admin', 'director', 'accounting', 'cashier', 'service_manager', 'reception', 'grh'] },
+  { path: '/reports', label: 'Rapports', icon: BarChart3, roles: ['admin', 'director', 'service_manager', 'reception', 'grh'] },
+  { path: '/users', label: 'Utilisateurs', icon: UserCog, roles: ['admin', 'director', 'grh'] },
   { path: '/settings', label: 'Parametres', icon: Settings, roles: ['admin', 'director', 'reception'] },
 ];
 

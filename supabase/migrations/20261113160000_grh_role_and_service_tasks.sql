@@ -2,8 +2,12 @@
 -- MIGRATION: 20261113160000_grh_role_and_service_tasks.sql
 -- Description: 
 -- 1. Ajout du rôle GRH (Ressources Humaines & Comptabilité)
--- 2. Système complet de gestion des tâches et avancement par service (service_tasks & task_progress_logs)
--- 3. Sécurisation et cloisonnement financier (revenus par service visibles uniquement par le chef de service, finances globales visibles par Direction / GRH / Caissière / Réception)
+-- 2. Système complet de gestion des tâches par service :
+--    - Attribution au Responsable de Service avec possibilité de délégation (assigned_to / technicien)
+--    - Coordination et partage multi-services (secondary_service_ids)
+--    - Suivi d'assiduité des pointages quotidiens (last_log_date) et gestion des blocages
+--    - Journal d'avancement quotidien ou hebdomadaire (task_progress_logs)
+-- 3. Sécurisation et cloisonnement financier strict
 -- =======================================================
 
 -- 1. Mettre à jour la contrainte de rôle dans la table profiles
@@ -19,6 +23,8 @@ CREATE TABLE IF NOT EXISTS public.service_tasks (
   title TEXT NOT NULL,
   description TEXT,
   service_id UUID NOT NULL REFERENCES public.services(id) ON DELETE CASCADE,
+  service_manager_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  secondary_service_ids UUID[] DEFAULT '{}',
   visitor_id UUID REFERENCES public.visitors(id) ON DELETE SET NULL,
   visit_id UUID REFERENCES public.visits(id) ON DELETE SET NULL,
   assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -30,14 +36,26 @@ CREATE TABLE IF NOT EXISTS public.service_tasks (
   current_stage TEXT DEFAULT 'Démarrage',
   priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
   status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('pending', 'in_progress', 'review', 'blocked', 'completed', 'cancelled')),
+  last_log_date DATE,
+  last_log_summary TEXT,
+  last_blockers TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Sécurisation de l'ajout des colonnes si la table existait déjà
+ALTER TABLE public.service_tasks ADD COLUMN IF NOT EXISTS service_manager_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+ALTER TABLE public.service_tasks ADD COLUMN IF NOT EXISTS secondary_service_ids UUID[] DEFAULT '{}';
+ALTER TABLE public.service_tasks ADD COLUMN IF NOT EXISTS last_log_date DATE;
+ALTER TABLE public.service_tasks ADD COLUMN IF NOT EXISTS last_log_summary TEXT;
+ALTER TABLE public.service_tasks ADD COLUMN IF NOT EXISTS last_blockers TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_service_tasks_service_id ON public.service_tasks(service_id);
+CREATE INDEX IF NOT EXISTS idx_service_tasks_service_manager_id ON public.service_tasks(service_manager_id);
 CREATE INDEX IF NOT EXISTS idx_service_tasks_assigned_to ON public.service_tasks(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_service_tasks_visitor_id ON public.service_tasks(visitor_id);
 CREATE INDEX IF NOT EXISTS idx_service_tasks_status ON public.service_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_service_tasks_last_log_date ON public.service_tasks(last_log_date);
 
 -- 3. Création du journal des pointages / avancement quotidien ou hebdomadaire (task_progress_logs)
 CREATE TABLE IF NOT EXISTS public.task_progress_logs (
@@ -64,6 +82,9 @@ BEGIN
   SET 
     progress_percentage = NEW.progress_percentage,
     current_stage = COALESCE(NULLIF(NEW.stage_label, ''), current_stage),
+    last_log_date = NEW.log_date,
+    last_log_summary = NEW.summary,
+    last_blockers = NEW.blockers,
     status = CASE 
       WHEN NEW.progress_percentage >= 100 THEN 'completed' 
       ELSE NEW.status 
@@ -87,6 +108,8 @@ CREATE POLICY "service_tasks_select" ON public.service_tasks FOR SELECT TO authe
 USING (
   public.get_user_role(auth.uid()) IN ('admin', 'director', 'reception', 'grh', 'accounting')
   OR service_id = (SELECT service_id FROM public.profiles WHERE id = auth.uid())
+  OR (SELECT service_id FROM public.profiles WHERE id = auth.uid()) = ANY(secondary_service_ids)
+  OR service_manager_id = auth.uid()
   OR assigned_to = auth.uid()
   OR created_by = auth.uid()
 );
@@ -101,6 +124,7 @@ DROP POLICY IF EXISTS "service_tasks_update" ON public.service_tasks;
 CREATE POLICY "service_tasks_update" ON public.service_tasks FOR UPDATE TO authenticated
 USING (
   public.get_user_role(auth.uid()) IN ('admin', 'director', 'grh', 'reception', 'service_manager')
+  OR service_manager_id = auth.uid()
   OR assigned_to = auth.uid()
 );
 

@@ -378,6 +378,8 @@ export interface ServiceTask {
   title: string;
   description: string | null;
   service_id: string;
+  service_manager_id?: string | null;
+  secondary_service_ids?: string[];
   visitor_id: string | null;
   visit_id: string | null;
   assigned_to: string | null;
@@ -389,9 +391,13 @@ export interface ServiceTask {
   current_stage: string;
   priority: Priority;
   status: TaskStatus;
+  last_log_date?: string | null;
+  last_log_summary?: string | null;
+  last_blockers?: string | null;
   created_at: string;
   updated_at: string;
   service?: Service;
+  service_manager?: Profile;
   visitor?: Visitor;
   assigned_collaborator?: Profile;
   creator?: Profile;

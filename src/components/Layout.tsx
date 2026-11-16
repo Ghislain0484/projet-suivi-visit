@@ -27,8 +27,12 @@ import {
   HeartPulse,
   FolderLock,
   CheckSquare,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from 'lucide-react';
 import { supabase, Notification as NotificationType } from '../lib/supabase';
+import { useNetworkStatus } from '../lib/offlineSync';
 
 const navItems = [
   { path: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['admin', 'director', 'reception', 'service_manager', 'accounting', 'grh', 'cashier', 'collaborator', 'nurse', 'lawyer'] },
@@ -50,6 +54,7 @@ const navItems = [
 export default function Layout() {
   const { user, profile, signOut } = useAuth();
   const { settings } = useCompanySettings();
+  const { isOnline, pendingCount, isSyncing, lastSyncMessage, syncNow } = useNetworkStatus();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -136,6 +141,7 @@ export default function Layout() {
       director: 'Directeur General',
       reception: 'Assistante de Direction',
       service_manager: 'Responsable Service',
+      grh: 'GRH & Comptabilité',
       accounting: 'Comptabilite',
       cashier: 'Caissier(ère)',
       collaborator: 'Collaborateur',
@@ -356,6 +362,40 @@ export default function Layout() {
                 />
               </div>
 
+              {/* État de connectivité (En ligne / Hors-ligne / Synchro) */}
+              <div className="flex items-center">
+                {!isOnline ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-300/40 animate-pulse">
+                    <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span className="hidden sm:inline">Hors-ligne</span>
+                    {pendingCount > 0 && (
+                      <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-800 text-[10px]">
+                        {pendingCount}
+                      </span>
+                    )}
+                  </div>
+                ) : isSyncing ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span className="hidden sm:inline">Sync...</span>
+                  </div>
+                ) : pendingCount > 0 ? (
+                  <button
+                    onClick={syncNow}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors"
+                    title="Envoyer les modifications en attente"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Sync ({pendingCount})</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20" title="Connecté au serveur">
+                    <Wifi className="w-3.5 h-3.5" />
+                    <span className="hidden xl:inline">En ligne</span>
+                  </div>
+                )}
+              </div>
+
               {/* Theme Toggle Button */}
               <button
                 onClick={toggleTheme}
@@ -480,6 +520,16 @@ export default function Layout() {
             </div>
           </div>
         </header>
+
+        {/* Bannière de notification hors-ligne & synchronisation */}
+        {lastSyncMessage && (
+          <div className="bg-primary-600 text-white px-6 py-2.5 text-xs font-semibold flex items-center justify-between shadow-md transition-all duration-300">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-primary-200" />
+              <span>{lastSyncMessage}</span>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Page Content */}
         <main className="flex-1 p-6 sm:p-8 overflow-y-auto">

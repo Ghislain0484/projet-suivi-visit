@@ -1,0 +1,22 @@
+{
+  "name": "GICO VISIT TRACKER",
+  "short_name": "VisitTracker",
+  "description": "Plateforme de gestion et suivi des visites, tâches et finances - GICO SARL",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e40af",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo-gico.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-gico.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

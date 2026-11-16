@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useCompanySettings } from '../contexts/CompanySettingsContext';
 import {
@@ -25,11 +25,15 @@ import {
   Check,
   X,
   Send,
-  Lock
+  Lock,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { settings: dbSettings, updateSettings } = useCompanySettings();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showCustomUrlInput, setShowCustomUrlInput] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'automations' | 'recipients' | 'logs'>('general');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -153,6 +157,52 @@ export default function SettingsPage() {
     if (data) setLogs(data);
   };
 
+  // Traitement du téléversement d'un logo depuis un fichier local avec compression
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Veuillez sélectionner un fichier image valide (PNG, JPEG, SVG, WebP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Redimensionnement automatique optimisé (max 400x400)
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/png', 0.9);
+          setCompanySettings((prev) => ({ ...prev, logo_url: compressedDataUrl }));
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   // GENERAL SETTINGS SAVING
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,10 +222,15 @@ export default function SettingsPage() {
       logo_url: companySettings.logo_url || null,
       visit_prefix: companySettings.visit_prefix,
       invoice_prefix: companySettings.invoice_prefix,
+      default_duration_days: companySettings.default_duration_days,
     });
 
     if (err) {
-      setError(err.message || "Impossible d'enregistrer les paramètres");
+      if (err.message && err.message.includes('company_settings')) {
+        setError("La table 'company_settings' n'est pas encore créée dans Supabase. Vos modifications sont sauvegardées dans votre navigateur.");
+      } else {
+        setError(err.message || "Impossible d'enregistrer les paramètres sur le serveur");
+      }
     } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -581,7 +636,96 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Section Téléversement du Logo (Fichier local ou URL) */}
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider block">
+                          Logo de l'entreprise
+                        </label>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Uploadez votre logo directement depuis votre ordinateur (PNG, SVG ou JPEG).
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept="image/*"
+                          onChange={handleLogoFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 shadow-sm bg-white dark:bg-slate-800"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-primary-600 dark:text-primary-400" />
+                          <span>Choisir un fichier</span>
+                        </button>
+                        {companySettings.logo_url && (
+                          <button
+                            type="button"
+                            onClick={() => setCompanySettings((p) => ({ ...p, logo_url: '' }))}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
+                            title="Supprimer le logo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Aperçu interactif du logo */}
+                    <div className="flex items-center gap-4 pt-1">
+                      <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 flex items-center justify-center p-2 overflow-hidden shadow-inner flex-shrink-0">
+                        {companySettings.logo_url ? (
+                          <img
+                            src={companySettings.logo_url}
+                            alt="Logo entreprise"
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center text-slate-400 text-[10px]">
+                            <ImageIcon className="w-6 h-6 mb-1 text-slate-300 dark:text-slate-600" />
+                            <span>Aucun logo</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 space-y-1">
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          {companySettings.logo_url ? 'Aperçu du logo actuel' : 'Logo par défaut actif'}
+                        </p>
+                        <p className="text-[11px] text-slate-400 leading-normal">
+                          Ce logo est utilisé dans l'en-tête, le menu latéral et apparaît sur toutes vos factures et reçus imprimés.
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomUrlInput(!showCustomUrlInput)}
+                          className="text-[11px] text-primary-600 dark:text-primary-400 hover:underline inline-block pt-1 font-medium"
+                        >
+                          {showCustomUrlInput ? 'Masquer le champ URL' : 'Ou renseigner manuellement une URL web'}
+                        </button>
+
+                        {showCustomUrlInput && (
+                          <div className="pt-2 animate-fade-in">
+                            <input
+                              type="text"
+                              value={companySettings.logo_url}
+                              onChange={(e) => setCompanySettings((p) => ({ ...p, logo_url: e.target.value }))}
+                              className="input text-xs py-1.5"
+                              placeholder="https://votresite.com/logo.png"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="label">Slogan / Description</label>
                       <input
@@ -589,16 +733,6 @@ export default function SettingsPage() {
                         value={companySettings.slogan}
                         onChange={(e) => setCompanySettings(p => ({ ...p, slogan: e.target.value }))}
                         className="input"
-                      />
-                    </div>
-                    <div>
-                      <label className="label">URL du Logo</label>
-                      <input
-                        type="text"
-                        value={companySettings.logo_url}
-                        onChange={(e) => setCompanySettings(p => ({ ...p, logo_url: e.target.value }))}
-                        className="input"
-                        placeholder="Ex: https://votresite.com/logo.png"
                       />
                     </div>
                     <div>

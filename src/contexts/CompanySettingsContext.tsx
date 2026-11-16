@@ -10,25 +10,31 @@ export interface CompanySettings {
   phone: string | null;
   email: string | null;
   website: string | null;
+  company_address: string | null;
   logo_url: string | null;
   currency: string;
   visit_prefix: string;
   invoice_prefix: string;
+  default_duration_days?: number | string | null;
 }
+
+const LOCAL_STORAGE_SETTINGS_KEY = 'gico_company_settings_cache';
 
 const DEFAULT_SETTINGS: CompanySettings = {
   id: '',
   company_name: 'GICO SARL',
-  slogan: 'Gestion & Intégration de Services Collaboratifs',
-  rccm: 'BF-OUA-2026-B-1234',
-  ifu: '00123456X',
-  phone: '+226 25 30 00 00',
-  email: 'contact@gico.bf',
-  website: 'www.gico.bf',
-  logo_url: null,
+  slogan: 'CONSTRUIRE AVEC VOUS UN IDEAL',
+  rccm: '',
+  ifu: '',
+  phone: '+225 2721211149',
+  email: 'contact@gicosarl.net',
+  website: 'https://gicosarl.net/',
+  company_address: 'Bonoua Yaou face Pharmacie de Bonoua',
+  logo_url: '/logo-gico.png',
   currency: 'XOF',
   visit_prefix: 'VT',
-  invoice_prefix: 'FAC'
+  invoice_prefix: 'FAC',
+  default_duration_days: '7'
 };
 
 interface CompanySettingsContextType {
@@ -41,7 +47,18 @@ interface CompanySettingsContextType {
 const CompanySettingsContext = createContext<CompanySettingsContextType | undefined>(undefined);
 
 export const CompanySettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [settings, setSettings] = useState<CompanySettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<CompanySettings>(() => {
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+      if (cached) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
+      }
+    } catch (e) {
+      console.warn('Error reading local company settings cache:', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
+
   const [loading, setLoading] = useState(true);
 
   const fetchSettings = async () => {
@@ -52,17 +69,29 @@ export const CompanySettingsProvider: React.FC<{ children: React.ReactNode }> = 
         .limit(1);
 
       if (error) {
-        // Table might not exist yet, fallback silently
-        console.warn('Company settings table query failed, using defaults:', error.message);
-        setSettings(DEFAULT_SETTINGS);
+        console.warn('Company settings table query note:', error.message);
+        // Utiliser le cache local ou les paramètres par défaut
+        try {
+          const cached = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+          if (cached) {
+            setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(cached) });
+          } else {
+            setSettings(DEFAULT_SETTINGS);
+          }
+        } catch {
+          setSettings(DEFAULT_SETTINGS);
+        }
       } else if (data && data.length > 0) {
-        setSettings(data[0]);
+        const remoteSettings = { ...DEFAULT_SETTINGS, ...data[0] };
+        setSettings(remoteSettings);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(remoteSettings));
+        } catch {}
       } else {
         setSettings(DEFAULT_SETTINGS);
       }
     } catch (e) {
       console.error('Error fetching company settings:', e);
-      setSettings(DEFAULT_SETTINGS);
     } finally {
       setLoading(false);
     }
@@ -70,18 +99,23 @@ export const CompanySettingsProvider: React.FC<{ children: React.ReactNode }> = 
 
   const updateSettings = async (newSettings: Partial<CompanySettings>) => {
     try {
-      // If we don't have an ID (i.e. default settings loaded), we might insert or update the first record
+      // Sauvegarder d'abord localement pour une réactivité instantanée
+      const merged = { ...settings, ...newSettings };
+      setSettings(merged);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(merged));
+      } catch {}
+
+      // Tenter la mise à jour sur Supabase
       let id = settings.id;
-      
       if (!id) {
-        // Query to check if there is a row we can target
         const { data } = await supabase.from('company_settings').select('id').limit(1);
         if (data && data.length > 0) {
           id = data[0].id;
         }
       }
 
-      let error;
+      let error = null;
       if (id) {
         const { error: err } = await supabase
           .from('company_settings')
@@ -101,7 +135,7 @@ export const CompanySettingsProvider: React.FC<{ children: React.ReactNode }> = 
           .select();
         error = err;
         if (data && data.length > 0) {
-          setSettings(data[0]);
+          setSettings((prev) => ({ ...prev, id: data[0].id }));
         }
       }
 
@@ -110,7 +144,7 @@ export const CompanySettingsProvider: React.FC<{ children: React.ReactNode }> = 
       }
       return { error };
     } catch (err: any) {
-      console.error('Failed to update company settings:', err);
+      console.error('Failed to update company settings on server:', err);
       return { error: err };
     }
   };
